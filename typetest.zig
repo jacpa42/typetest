@@ -26,11 +26,19 @@ pub fn main() !void {
     );
     defer res.deinit();
 
-    const words = try Words.parse(
-        gpa.allocator(),
-        res.args.@"word-file" orelse return error.WordFileRequired,
-    );
+    var words: Words = undefined;
     defer words.deinit(gpa.allocator());
+    // If we are piping stuff into the program we read that rather than the file path provided
+    if (std.fs.File.stdin().isTty()) {
+        const path = res.args.@"word-file" orelse return error.MissingInput;
+
+        var wordfile = try std.fs.cwd().openFile(path, .{});
+        defer wordfile.close();
+
+        words = try Words.parseFromFile(gpa.allocator(), wordfile);
+    } else {
+        words = try Words.parseFromFile(gpa.allocator(), std.fs.File.stdin());
+    }
 
     var word_idx: usize = 1;
     var word_count = res.args.@"word-count" orelse DEFAULT_WORD_COUNT;
@@ -78,16 +86,11 @@ const Words = struct {
         std.fs.File.OpenError ||
         std.Io.Reader.LimitedAllocError;
 
-    fn parse(
+    fn parseFromReader(
         gpa: std.mem.Allocator,
-        path: []const u8,
+        reader: *std.fs.File.Reader,
     ) WordsParseError!@This() {
-        const f = try std.fs.cwd().openFile(path, .{});
-        defer f.close();
-
         const KIB = 1024;
-        var buf: [KIB]u8 = undefined;
-        var reader = f.reader(&buf);
 
         const word_buf = try reader.interface.allocRemaining(
             gpa,
@@ -115,6 +118,16 @@ const Words = struct {
         const newlines = try newlines_array_list.toOwnedSlice(gpa);
 
         return Words{ .word_buf = word_buf, .newlines = newlines };
+    }
+
+    fn parseFromFile(
+        gpa: std.mem.Allocator,
+        file: std.fs.File,
+    ) WordsParseError!@This() {
+        const KIB = 1024;
+        var buf: [KIB]u8 = undefined;
+        var file_reader = file.reader(&buf);
+        return @This().parseFromReader(gpa, &file_reader);
     }
 };
 
