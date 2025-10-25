@@ -10,8 +10,8 @@ pub fn main() !void {
 
     const params = comptime clap.parseParamsComptime(
         \\-h, --help              Display this help and exit.
-        \\-w, --word-count <int>  File to select words from. Ignored if stdin is not empty.
-        \\-f, --word-file  <file>  File to select words from. Ignored if stdin is not empty.
+        \\-w, --word-count <int>  Number of words to show.
+        \\-f, --word-file  <file> File to select words from. Ignored if stdin is not empty.
         \\
     );
 
@@ -74,7 +74,7 @@ const Words = struct {
     }
 
     const WordsParseError =
-        error{ OutOfMemory, InvalidUtf8 } ||
+        error{ OutOfMemory, InvalidUtf8, EmptyFile } ||
         std.fs.File.OpenError ||
         std.Io.Reader.LimitedAllocError;
 
@@ -109,6 +109,8 @@ const Words = struct {
             if (cp_slice[0] == '\n') try newlines_array_list.append(gpa, idx);
             idx += cp_slice.len;
         }
+
+        if (newlines_array_list.items.len == 1) return error.EmptyFile;
 
         const newlines = try newlines_array_list.toOwnedSlice(gpa);
 
