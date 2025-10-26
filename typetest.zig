@@ -11,6 +11,7 @@ pub fn main() !void {
     const params = comptime clap.parseParamsComptime(
         \\-h, --help              Display this help and exit.
         \\-w, --word-count <int>  Number of words to show.
+        \\-s, --seed       <seed> Seed to use for rng.
         \\-f, --word-file  <file> File to select words from. Ignored if stdin is not empty.
         \\
     );
@@ -20,43 +21,79 @@ pub fn main() !void {
         &params,
         .{
             .file = clap.parsers.string,
+            .seed = clap.parsers.int(u64, 10),
             .int = parsers.int(u32, 1, MAX_WORD_COUNT),
         },
         .{ .allocator = gpa.allocator() },
     );
     defer res.deinit();
 
-    var words: Words = undefined;
-    defer words.deinit(gpa.allocator());
-    // If we are piping stuff into the program we read that rather than the file path provided
-    if (std.fs.File.stdin().isTty()) {
-        const path = res.args.@"word-file" orelse return error.MissingInput;
-
-        var wordfile = try std.fs.cwd().openFile(path, .{});
-        defer wordfile.close();
-
-        words = try Words.parseFromFile(gpa.allocator(), wordfile);
-    } else {
-        words = try Words.parseFromFile(gpa.allocator(), std.fs.File.stdin());
-    }
-
-    var word_idx: usize = 1;
-    var word_count = res.args.@"word-count" orelse DEFAULT_WORD_COUNT;
-
-    while (word_count > 0) {
-        word_idx = (word_idx << 1) % words.wordCount();
-        std.debug.print("{:4}: {s}\n", .{ word_idx, words.getWordUnchecked(word_idx) });
-        word_count -= 1;
-    }
-
-    // todo: choose some random words from the wordfile
-    // todo: print out words and listen for keyboard input.
-
     // `clap.help` is a function that can print a simple help message. It can print any `Param`
     // where `Id` has a `description` and `value` method (`Param(Help)` is one such parameter).
     // The last argument contains options as to how `help` should print those parameters. Using
     // `.{}` means the default options.
-    if (res.args.help != 0) return clap.helpToFile(.stderr(), clap.Help, &params, .{});
+    if (res.args.help > 0) {
+        return clap.helpToFile(.stderr(), clap.Help, &params, .{
+            .description_indent = 0,
+            .indent = 2,
+            .markdown_lite = true,
+            .description_on_new_line = false,
+            .spacing_between_parameters = 0,
+        });
+    }
+
+    var words = try Words.parseFromPath(gpa.allocator(), res.args.@"word-file");
+    defer words.deinit(gpa.allocator());
+
+    const word_count = res.args.@"word-count" orelse DEFAULT_WORD_COUNT;
+    var rng = std.Random.DefaultPrng.init(res.args.seed orelse 0);
+
+    for (1..word_count + 1) |word| {
+        const idx = @as(usize, @truncate(rng.next())) % words.wordCount();
+        std.debug.print("{:7}: {s}\n", .{ word, words.getWordUnchecked(idx) });
+    }
+
+    const stdout = std.fs.File.stdout();
+    var winsize = try getTerminalSize(stdout);
+    winsize = undefined;
+}
+
+fn getTerminalSize(
+    file: std.fs.File,
+) error{ TerminalUnsupported, GetSizeFail }!struct { w: u16, h: u16 } {
+    if (!file.supportsAnsiEscapeCodes()) return error.TerminalUnsupported;
+
+    const builtin = @import("builtin");
+
+    return switch (builtin.os.tag) {
+        .linux, .macos => blk: {
+            var buf: std.posix.winsize = undefined;
+            break :blk switch (std.posix.errno(
+                std.posix.system.ioctl(
+                    file.handle,
+                    std.posix.T.IOCGWINSZ,
+                    @intFromPtr(&buf),
+                ),
+            )) {
+                .SUCCESS => .{ .w = buf.col, .h = buf.row },
+                else => error.GetSizeFail,
+            };
+        },
+        .windows => blk: {
+            var buf: std.os.windows.CONSOLE_SCREEN_BUFFER_INFO = undefined;
+            break :blk switch (std.os.windows.kernel32.GetConsoleScreenBufferInfo(
+                file.handle,
+                &buf,
+            )) {
+                std.os.windows.TRUE => .{
+                    .w = @intCast(buf.srWindow.Right - buf.srWindow.Left + 1),
+                    .h = @intCast(buf.srWindow.Bottom - buf.srWindow.Top + 1),
+                },
+                else => error.GetSizeFail,
+            };
+        },
+        else => @compileError("Your platform is unsupported."),
+    };
 }
 
 const Words = struct {
@@ -65,6 +102,7 @@ const Words = struct {
     /// Indices of newline characters in `word_buf`
     newlines: []const usize,
 
+    /// Returns a (utf8) word from the wordbuf at the index
     fn getWordUnchecked(self: *const @This(), idx: usize) []const u8 {
         std.debug.assert(idx + 1 < self.newlines.len);
         return self.word_buf[self.newlines[idx] + 1 .. self.newlines[idx + 1]];
@@ -86,13 +124,15 @@ const Words = struct {
         std.fs.File.OpenError ||
         std.Io.Reader.LimitedAllocError;
 
-    fn parseFromReader(
+    fn parseFromFile(
         gpa: std.mem.Allocator,
-        reader: *std.fs.File.Reader,
+        file: std.fs.File,
     ) WordsParseError!@This() {
         const KIB = 1024;
+        var buf: [KIB]u8 = undefined;
+        var file_reader = file.reader(&buf);
 
-        const word_buf = try reader.interface.allocRemaining(
+        const word_buf = try file_reader.interface.allocRemaining(
             gpa,
             .limited(KIB * KIB * KIB),
         );
@@ -120,14 +160,20 @@ const Words = struct {
         return Words{ .word_buf = word_buf, .newlines = newlines };
     }
 
-    fn parseFromFile(
+    /// If `stdin` is not piped then try use the path var
+    fn parseFromPath(
         gpa: std.mem.Allocator,
-        file: std.fs.File,
-    ) WordsParseError!@This() {
-        const KIB = 1024;
-        var buf: [KIB]u8 = undefined;
-        var file_reader = file.reader(&buf);
-        return @This().parseFromReader(gpa, &file_reader);
+        path: ?[]const u8,
+    ) (error{MissingInputFile} || WordsParseError)!@This() {
+        const stdin = std.fs.File.stdin();
+        if (stdin.isTty()) {
+            const wordfile = try std.fs.cwd().openFile(path orelse return error.MissingInputFile, .{});
+            defer wordfile.close();
+
+            return try Words.parseFromFile(gpa, wordfile);
+        } else {
+            return try Words.parseFromFile(gpa, stdin);
+        }
     }
 };
 

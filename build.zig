@@ -10,12 +10,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const exe = b.addExecutable(.{ .name = "typetest", .root_module = mod });
-    // Install the executable in build dir
-    b.installArtifact(exe);
+    const dependancies: [2][]const u8 = .{ "clap", "vaxis" };
+    for (dependancies) |name| {
+        const dependancy = b.dependency(name, .{
+            .target = target,
+            .optimize = optimize,
+        });
+        mod.addImport(name, dependancy.module(name));
+    }
 
-    const clap = b.dependency("clap", .{});
-    exe.root_module.addImport("clap", clap.module("clap"));
+    const exe = b.addExecutable(.{
+        .name = "typetest",
+        .root_module = mod,
+    });
 
     const bin = b.addRunArtifact(exe);
     const run_step = b.step("run", "Execute program");
@@ -28,4 +35,7 @@ pub fn build(b: *std.Build) void {
     const run_mod_tests = b.addRunArtifact(mod_tests);
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    // Install the executable in build dir
+    b.installArtifact(exe);
 }
