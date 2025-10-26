@@ -46,14 +46,23 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
             .spacing_between_parameters = 0,
         };
 
-        const result = clap.helpToFile(.stderr(), clap.Help, &params, help_style);
+        const result = clap.helpToFile(
+            .stderr(),
+            clap.Help,
+            &params,
+            help_style,
+        );
 
         result catch std.process.exit(1);
 
         std.process.exit(0);
     }
 
-    const words = try Words.parseFromPath(alloc, res.args.@"word-file", max_word_count);
+    const words = try Words.parseFromPath(
+        alloc,
+        res.args.@"word-file",
+        max_word_count,
+    );
 
     return .{
         .words = words,

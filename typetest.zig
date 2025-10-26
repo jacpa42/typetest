@@ -14,9 +14,53 @@ const Event = union(enum) {
 /// Action abstraction layer for the program. Each action has an effect in the scene and we can map keycodes to actions
 const Action = union(enum) {
     none,
+    /// Undo the last keystroke
     undo,
+    /// Restart the test
+    restart,
     // The codepoint of a keypress
     key_press: u21,
+};
+
+/// A little state container for a given test
+const TypeTestState = struct {
+    /// The words in our buffer. known to be utf8
+    iter: std.unicode.Utf8Iterator,
+
+    /// Assumes that the `word_buf` is utf8
+    fn init(word_buf: []const u8) @This() {
+        std.debug.assert(std.unicode.utf8ValidateSlice(word_buf));
+
+        return @This(){
+            .iter = std.unicode.Utf8View.initUnchecked(word_buf).iterator(),
+        };
+    }
+
+    /// Returns the previous codepoint. Returns `null` iff at the start of the buffer
+    fn prev(self: *@This()) ?[]const u8 {
+        if (self.iter.i == 0) return null;
+
+        const end = self.iter.i;
+
+        while (true) {
+            self.iter.i -= 1;
+
+            // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
+            // Once this is no longer the case then we have reached the previous code point.
+            // see https://en.wikipedia.org/wiki/UTF-8#Description
+
+            if (self.iter.i == 0 or (self.iter.bytes[self.iter.i] & 0xC0) != 0x80) {
+                break;
+            }
+        }
+
+        return self.iter.bytes[self.iter.i..end];
+    }
+
+    /// Returns the next codepoint. Returns `null` iff at the end of the buffer
+    fn next(self: *@This()) ?[]const u8 {
+        return self.iter.nextCodepointSlice();
+    }
 };
 
 pub fn main() !void {
