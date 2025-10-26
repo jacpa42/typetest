@@ -100,13 +100,14 @@ pub fn parseFromFile(
 pub fn parseFromPath(
     gpa: std.mem.Allocator,
     path: ?[]const u8,
+    max_words: usize,
 ) (error{MissingInputFile} || WordsParseError)!@This() {
     if (!std.fs.File.stdin().isTty()) {
-        return try parseFromFile(gpa, std.fs.File.stdin());
+        return try parseFromFile(gpa, std.fs.File.stdin(), max_words);
     }
 
     const wordfile = try std.fs.cwd().openFile(path orelse return error.MissingInputFile, .{});
     defer wordfile.close();
 
-    return try parseFromFile(gpa, wordfile);
+    return try parseFromFile(gpa, wordfile, max_words);
 }

@@ -24,7 +24,7 @@ pub const Args = struct {
 
 const ParseArgsError = error{};
 
-pub fn parseArgs(alloc: std.mem.Allocator) ParseArgsError!Args {
+pub fn parseArgs(alloc: std.mem.Allocator) !Args {
     var res = try clap.parse(
         clap.Help,
         &params,
@@ -53,7 +53,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) ParseArgsError!Args {
         std.process.exit(0);
     }
 
-    const words = try Words.parseFromPath(alloc, res.args.@"word-file");
+    const words = try Words.parseFromPath(alloc, res.args.@"word-file", max_word_count);
 
     return .{
         .words = words,
