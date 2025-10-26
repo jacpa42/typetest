@@ -10,31 +10,6 @@ word_buf: []const u8,
 /// Indices of newline characters in `word_buf`
 newlines: []const usize,
 
-/// Returns a buf of space seperated randomly selected words (`Xoshiro256`)
-pub fn generateRandomWords(
-    self: *const @This(),
-    alloc: std.mem.Allocator,
-    seed: u64,
-    count: usize,
-) error{OutOfMemory}![]const u8 {
-    // We want a line of words which is the length of the test length
-    var rng = std.Random.DefaultPrng.init(seed);
-    var current_word_buf = std.ArrayList(u8).empty;
-    defer current_word_buf.deinit(alloc);
-
-    for (0..count) |_| {
-        const idx =
-            rng.random().intRangeLessThan(usize, 0, self.wordCount());
-        const next_word = self.getWordUnchecked(idx);
-
-        try current_word_buf.ensureUnusedCapacity(alloc, next_word.len + 1);
-        current_word_buf.appendSliceAssumeCapacity(next_word);
-        current_word_buf.appendAssumeCapacity(' ');
-    }
-
-    return try current_word_buf.toOwnedSlice(alloc);
-}
-
 /// Returns a (utf8) word from the wordbuf at the index
 pub fn getWordUnchecked(self: *const @This(), idx: usize) []const u8 {
     std.debug.assert(idx + 1 < self.newlines.len);

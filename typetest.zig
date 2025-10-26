@@ -4,64 +4,41 @@ const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
 
 const parseArgs = @import("src/args.zig").parseArgs;
+const GameState = @import("src/GameState.zig");
 
 const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
-    focus_in,
 };
 
 /// Action abstraction layer for the program. Each action has an effect in the scene and we can map keycodes to actions
 const Action = union(enum) {
-    none,
+    none: void,
+    exit_program: void,
     /// Undo the last keystroke
-    undo,
+    undo: void,
     /// Restart the test
-    restart,
-    // The codepoint of a keypress
+    restart: void,
+    // The codepoint of a key_press
     key_press: u21,
 };
 
-/// A little state container for a given test
-const TypeTestState = struct {
-    /// The words in our buffer. known to be utf8
-    iter: std.unicode.Utf8Iterator,
+/// Process the event from vaxis and optionally emit an action to process
+fn processKeydown(key: vaxis.Key) Action {
+    const del = std.ascii.control_code.del;
 
-    /// Assumes that the `word_buf` is utf8
-    fn init(word_buf: []const u8) @This() {
-        std.debug.assert(std.unicode.utf8ValidateSlice(word_buf));
-
-        return @This(){
-            .iter = std.unicode.Utf8View.initUnchecked(word_buf).iterator(),
-        };
+    if (key.matches('c', .{ .ctrl = true })) {
+        return Action.exit_program;
+    } else if (key.matches('r', .{ .ctrl = true })) {
+        return Action.restart;
+    } else if (key.matches(del, .{})) {
+        return Action.undo;
+    } else if (!key.isModifier()) {
+        return Action{ .key_press = key.codepoint };
     }
 
-    /// Returns the previous codepoint. Returns `null` iff at the start of the buffer
-    fn prev(self: *@This()) ?[]const u8 {
-        if (self.iter.i == 0) return null;
-
-        const end = self.iter.i;
-
-        while (true) {
-            self.iter.i -= 1;
-
-            // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
-            // Once this is no longer the case then we have reached the previous code point.
-            // see https://en.wikipedia.org/wiki/UTF-8#Description
-
-            if (self.iter.i == 0 or (self.iter.bytes[self.iter.i] & 0xC0) != 0x80) {
-                break;
-            }
-        }
-
-        return self.iter.bytes[self.iter.i..end];
-    }
-
-    /// Returns the next codepoint. Returns `null` iff at the end of the buffer
-    fn next(self: *@This()) ?[]const u8 {
-        return self.iter.nextCodepointSlice();
-    }
-};
+    return Action.none;
+}
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -78,12 +55,13 @@ pub fn main() !void {
     const args = try parseArgs(alloc);
     defer args.deinit(alloc);
 
-    const words_for_test = try args.words.generateRandomWords(
+    const game_state = try GameState.fromWords(
         alloc,
+        &args.words,
         args.seed,
         args.word_count,
     );
-    defer alloc.free(words_for_test);
+    defer game_state.deinit(alloc);
 
     // Init tty
     var buffer: [1024]u8 = undefined;
@@ -119,36 +97,24 @@ pub fn main() !void {
     while (true) {
         // nextEvent blocks until an event is in the queue
         const event = loop.nextEvent();
+        var action: Action = .none;
 
         // Exhaustive switching ftw. Vaxis will send events if your Event enum
         // has the fields for those events (ie "key_press", "winsize")
         switch (event) {
-            .key_press => |key| {
-                if (key.matches('c', .{ .ctrl = true })) {
-                    break;
-                } else if (key.matches('l', .{ .ctrl = true })) {
-                    vx.queueRefresh();
-                } else {
-                    // todo: print the key on screen :)
-                }
+            .key_press => |key| action = processKeydown(key),
+            .winsize => |ws| try vx.resize(alloc, tty.writer(), ws),
+        }
+
+        switch (action) {
+            .exit_program => break,
+            .undo => {},
+            .restart => {},
+            .key_press => |codepoint| {
+                _ = codepoint;
             },
 
-            // winsize events are sent to the application to ensure that all
-            // resizes occur in the main thread. This lets us avoid expensive
-            // locks on the screen. All applications must handle this event
-            // unless they aren't using a screen (IE only detecting features)
-            //
-            // The allocations are because we keep a copy of each cell to
-            // optimize renders. When resize is called, we allocated two slices:
-            // one for the screen, and one for our buffered screen. Each cell in
-            // the buffered screen contains an ArrayList(u8) to be able to store
-            // the grapheme for that cell. Each cell is initialized with a size
-            // of 1, which is sufficient for all of ASCII. Anything requiring
-            // more than one byte will incur an allocation on the first render
-            // after it is drawn. Thereafter, it will not allocate unless the
-            // screen is resized
-            .winsize => |ws| try vx.resize(alloc, tty.writer(), ws),
-            else => {},
+            .none => {},
         }
 
         // vx.window() returns the root window. This window is the size of the
@@ -182,10 +148,26 @@ pub fn main() !void {
         // todo: Each time the user presses a key we need to render if they typed that correctly.
         // We dont need to store what the user is typing. We only care about the current letter and how to move backward / foreward.
 
-        child.writeCell(1, 0, .{
-            .char = .{ .width = 1, .grapheme = "🫡" },
-            .style = .{ .bg = .{ .index = 0 } },
-        });
+        const action_name: ?[]const u8 = switch (action) {
+            .exit_program => "exit_program",
+            .undo => "Action.undo",
+            .restart => "Action.restart",
+            .key_press => "Action.key_press",
+
+            .none => null,
+        };
+
+        if (action_name) |aname| {
+            var iter = (try std.unicode.Utf8View.init(aname)).iterator();
+            var col: u16 = 0;
+            while (iter.nextCodepointSlice()) |cp| {
+                child.writeCell(col, 0, .{
+                    .char = .{ .width = 0, .grapheme = cp },
+                    .style = .{},
+                });
+                col += 1;
+            }
+        }
 
         // Render the screen. Using a buffered writer will offer much better
         // performance, but is not required
