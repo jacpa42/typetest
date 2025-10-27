@@ -1,6 +1,11 @@
 const std = @import("std");
 const Words = @import("Words.zig");
 
+cursor_col: u16 = 0,
+cursor_row: u16 = 0,
+
+mistake_counter: u32 = 0,
+
 /// The words in our buffer. known to be utf8
 iter: std.unicode.Utf8Iterator,
 
@@ -36,25 +41,100 @@ pub fn fromWords(
     return @This(){ .iter = view.iterator() };
 }
 
+/// Whether or not we have completed the game
+pub fn gameComplete(self: *const @This()) bool {
+    return self.iter.i == self.iter.bytes.len;
+}
+
 // the slice in the iterator is owned so we deinit it when we are done
 pub fn deinit(self: *const @This(), alloc: std.mem.Allocator) void {
     alloc.free(self.iter.bytes);
 }
 
+/// Moves the cursor forward 1 position in a square grid
+pub fn nextCursorPosition(
+    self: *@This(),
+    windim: struct { x: u16, y: u16 },
+) void {
+    self.cursor_col +|= 1;
+
+    if (self.cursor_col >= windim.x) {
+        self.cursor_col = 0;
+        self.cursor_row +|= 1;
+        if (self.cursor_row >= windim.y) {
+            self.cursor_col = windim.x -| 1;
+            self.cursor_row = windim.y -| 1;
+        }
+    }
+}
+
+/// Moves the cursor back 1 position in a square grid
+pub fn prevCursorPosition(
+    self: *@This(),
+    windim: struct { x: u16, y: u16 },
+) void {
+    if (self.cursor_col == 0) {
+        if (self.cursor_row > 0) {
+            self.cursor_row -= 1;
+            self.cursor_col = windim.x - 1;
+        }
+    } else self.cursor_col -= 1;
+}
+
+/// Peeks at the next codepoint. Returns `null` iff at the end of the buffer
+///
+/// does not modify the internal position of the iterator
+pub fn peekNextCodepoint(self: *@This()) ?[]const u8 {
+    const next = self.iter.peek(1);
+    return if (next.len > 0) next else null;
+}
+
+/// Returns the previous codepoint. Returns `null` iff at the start of the buffer
+///
+/// does not move cursor_col or cursor_row
+pub fn peekPrevCodepoint(self: *@This()) ?[]const u8 {
+    return peekPrevCodepointSlice(&self.iter);
+}
+
 /// Returns the next codepoint. Returns `null` iff at the end of the buffer
-pub fn next(self: *@This()) ?[]const u8 {
+///
+/// does not move cursor_col or cursor_row
+pub fn nextCodepoint(self: *@This()) ?[]const u8 {
     return self.iter.nextCodepointSlice();
 }
 
 /// Returns the previous codepoint. Returns `null` iff at the start of the buffer
-pub fn prev(self: *@This()) ?[]const u8 {
-    return previousCodepointSlice(&self.iter);
+///
+/// does not move cursor_col or cursor_row
+pub fn prevCodepoint(self: *@This()) ?[]const u8 {
+    return prevCodepointSlice(&self.iter);
 }
 
-fn previousCodepointSlice(iterator: *std.unicode.Utf8Iterator) ?[]const u8 {
+fn prevCodepointSlice(iterator: *std.unicode.Utf8Iterator) ?[]const u8 {
     if (iterator.i == 0) return null;
 
     const end = iterator.i;
+
+    while (true) {
+        iterator.i -= 1;
+
+        // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
+        // Once this is no longer the case then we have reached the previous code point.
+        // see https://en.wikipedia.org/wiki/UTF-8#Description
+
+        if (iterator.i == 0 or (iterator.bytes[iterator.i] & 0xC0) != 0x80) {
+            break;
+        }
+    }
+
+    return iterator.bytes[iterator.i..end];
+}
+
+fn peekPrevCodepointSlice(iterator: *std.unicode.Utf8Iterator) ?[]const u8 {
+    if (iterator.i == 0) return null;
+
+    const end = iterator.i;
+    defer iterator.i = end;
 
     while (true) {
         iterator.i -= 1;
@@ -99,19 +179,19 @@ test "unicode shenanigans" {
         try std.testing.expect(nxt == null);
     }
     {
-        nxt = previousCodepointSlice(&utf8iter);
+        nxt = prevCodepointSlice(&utf8iter);
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_4));
 
-        nxt = previousCodepointSlice(&utf8iter);
+        nxt = prevCodepointSlice(&utf8iter);
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_3));
 
-        nxt = previousCodepointSlice(&utf8iter);
+        nxt = prevCodepointSlice(&utf8iter);
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_2));
 
-        nxt = previousCodepointSlice(&utf8iter);
+        nxt = prevCodepointSlice(&utf8iter);
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_1));
 
-        nxt = previousCodepointSlice(&utf8iter);
+        nxt = prevCodepointSlice(&utf8iter);
         try std.testing.expect(nxt == null);
     }
 }

@@ -1,7 +1,22 @@
 const std = @import("std");
 
+const KIB = 1024;
+const MIB = KIB * KIB;
+
+const MAX_FILE_SIZE = 50 * MIB;
+const MAX_WORD_SIZE = KIB / 2;
+
 pub const WordsParseError =
-    error{ OutOfMemory, InvalidUtf8, EmptyFile } ||
+    error{
+        /// classic oom
+        OutOfMemory,
+        /// Found a character which is not valid utf8
+        InvalidUtf8,
+        /// The file provided is too big
+        EmptyFile,
+        /// There is a word in the file which is too large
+        WordsTooBig,
+    } ||
     std.fs.File.OpenError ||
     std.Io.Reader.LimitedAllocError;
 
@@ -38,13 +53,12 @@ pub fn parseFromFile(
     file: std.fs.File,
     max_words: usize,
 ) WordsParseError!@This() {
-    const KIB = 1024;
     var buf: [KIB]u8 = undefined;
     var file_reader = file.reader(&buf);
 
     const word_buf = try file_reader.interface.allocRemaining(
         gpa,
-        .limited(KIB * KIB * KIB),
+        .limited(MAX_FILE_SIZE),
     );
     errdefer gpa.free(word_buf);
 
@@ -59,12 +73,23 @@ pub fn parseFromFile(
 
     while (utf8_iter.nextCodepointSlice()) |cp_slice| {
         // Check for newline character
-        if (cp_slice[0] == '\n') try newlines_array_list.append(gpa, idx);
+        if (cp_slice[0] == '\n') {
+            const previous_idx = newlines_array_list.items[newlines_array_list.items.len - 1];
+            if (idx > MAX_WORD_SIZE + previous_idx) return error.WordsTooBig;
+            try newlines_array_list.append(gpa, idx);
+        }
         idx += cp_slice.len;
     }
 
-    if (newlines_array_list.items.len == 1) return error.EmptyFile;
-    newlines_array_list.appendAssumeCapacity(word_buf.len);
+    if (newlines_array_list.items.len <= 1) {
+        return error.EmptyFile;
+    } else {
+        const previous_idx = newlines_array_list.items[newlines_array_list.items.len - 1];
+        if (word_buf.len > MAX_WORD_SIZE + previous_idx) return error.WordsTooBig;
+    }
+    try newlines_array_list.append(gpa, word_buf.len);
+
+    std.debug.print("{any}\n", .{newlines_array_list});
 
     const newlines = try newlines_array_list.toOwnedSlice(gpa);
 

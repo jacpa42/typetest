@@ -2,8 +2,10 @@ const std = @import("std");
 const clap = @import("clap");
 
 const Words = @import("Words.zig");
+
 const max_word_count = 100_000;
 const default_word_count = 50;
+
 const params = clap.parseParamsComptime(
     \\-h, --help              Display this help and exit.
     \\-w, --word-count <int>  Number of words to show.

@@ -11,16 +11,40 @@ const Event = union(enum) {
     winsize: vaxis.Winsize,
 };
 
+const Styles = struct {
+    const untyped = vaxis.Style{
+        .dim = true,
+    };
+    const typed_right = vaxis.Style{
+        .fg = .{ .index = 10 },
+        .italic = true,
+    };
+    const typed_wrong = vaxis.Style{
+        .fg = .{ .index = 9 },
+        .bold = true,
+    };
+    const cursor = vaxis.Style{
+        .italic = true,
+        .fg = .{ .index = 0 },
+        .bg = .{ .index = 15 },
+    };
+};
+
+const GameAction = union(enum) {
+    undo,
+    key_press: u21,
+};
+const MenuAction = enum {
+    exit,
+    restart_game,
+    new_game,
+};
+
 /// Action abstraction layer for the program. Each action has an effect in the scene and we can map keycodes to actions
 const Action = union(enum) {
-    none: void,
-    exit_program: void,
-    /// Undo the last keystroke
-    undo: void,
-    /// Restart the test
-    restart: void,
-    // The codepoint of a key_press
-    key_press: u21,
+    none,
+    menu: MenuAction,
+    game: GameAction,
 };
 
 /// Process the event from vaxis and optionally emit an action to process
@@ -28,16 +52,134 @@ fn processKeydown(key: vaxis.Key) Action {
     const del = std.ascii.control_code.del;
 
     if (key.matches('c', .{ .ctrl = true })) {
-        return Action.exit_program;
+        return Action{ .menu = .exit };
     } else if (key.matches('r', .{ .ctrl = true })) {
-        return Action.restart;
+        return Action{ .menu = .restart_game };
+    } else if (key.matches('n', .{ .ctrl = true })) {
+        return Action{ .menu = .new_game };
     } else if (key.matches(del, .{})) {
-        return Action.undo;
-    } else if (!key.isModifier()) {
-        return Action{ .key_press = key.codepoint };
+        return Action{ .game = .undo };
+    } else if (key.text != null) {
+        return Action{ .game = .{ .key_press = key.codepoint } };
     }
 
     return Action.none;
+}
+
+/// Setups the draw window for the game
+fn initGameWindow(
+    window: *const vaxis.Window,
+    state: *const GameState,
+) vaxis.Window {
+    // Clear the entire space because we are drawing in immediate mode.
+    // vaxis double buffers the screen. This new frame will be compared to
+    // the old and only updated cells will be drawn
+    // win.clear();
+
+    const box_width = (window.width * 2) / 3;
+    const box_height = (window.height * 2) / 3;
+
+    // Create a bordered child window
+    const child = window.child(.{
+        .x_off = (window.width - box_width) / 2,
+        .y_off = (window.height - box_height) / 2,
+        .width = box_width,
+        .height = box_height,
+        .border = .{ .where = .all, .style = .{} },
+    });
+
+    const segment = vaxis.Segment{
+        .text = state.iter.bytes,
+        .style = Styles.untyped,
+    };
+    _ = child.printSegment(segment, .{});
+
+    return child;
+}
+
+fn handleUndo(
+    game_window: *vaxis.Window,
+    state: *GameState,
+) void {
+    // update the current cell to untyped and update the previous cell to cursor
+    if (state.peekNextCodepoint()) |char| {
+        game_window.writeCell(
+            state.cursor_col,
+            state.cursor_row,
+            .{
+                .char = .{ .width = 0, .grapheme = char },
+                .style = Styles.untyped,
+            },
+        );
+
+        state.prevCursorPosition(.{
+            .x = game_window.width,
+            .y = game_window.height,
+        });
+
+        if (state.prevCodepoint()) |next_char| {
+            game_window.writeCell(
+                state.cursor_col,
+                state.cursor_row,
+                .{
+                    .char = .{ .width = 0, .grapheme = next_char },
+                    .style = Styles.cursor,
+                },
+            );
+        }
+    }
+}
+
+/// On keypress we need to determine the cell draw style if it was correct or not and then draw
+fn handleKeyPress(
+    game_window: *vaxis.Window,
+    state: *GameState,
+    codepoint: u21,
+) void {
+    if (state.nextCodepoint()) |char| {
+        const decoded = std.unicode.utf8Decode(char) catch unreachable;
+        var style: vaxis.Style = undefined;
+
+        if (codepoint == decoded) {
+            style = Styles.typed_right;
+        } else {
+            style = Styles.typed_wrong;
+            state.mistake_counter += 1;
+        }
+
+        game_window.writeCell(
+            state.cursor_col,
+            state.cursor_row,
+            .{
+                .char = .{ .width = 0, .grapheme = char },
+                .style = style,
+            },
+        );
+
+        state.nextCursorPosition(.{
+            .x = game_window.width,
+            .y = game_window.height,
+        });
+
+        if (state.peekNextCodepoint()) |next_char| {
+            game_window.writeCell(state.cursor_col, state.cursor_row, .{
+                .char = .{ .width = 0, .grapheme = next_char },
+                .style = Styles.cursor,
+            });
+        }
+    }
+}
+
+/// Updates the current frame with the new action
+fn processGameAction(
+    game_window: *vaxis.Window,
+    state: *GameState,
+    action: GameAction,
+) void {
+    switch (action) {
+        .undo => handleUndo(game_window, state),
+        .key_press => |codepoint| handleKeyPress(game_window, state, codepoint),
+    }
 }
 
 pub fn main() !void {
@@ -52,10 +194,10 @@ pub fn main() !void {
         }
     }
 
-    const args = try parseArgs(alloc);
+    var args = try parseArgs(alloc);
     defer args.deinit(alloc);
 
-    const game_state = try GameState.fromWords(
+    var game_state = try GameState.fromWords(
         alloc,
         &args.words,
         args.seed,
@@ -94,6 +236,13 @@ pub fn main() !void {
     // be called after entering the alt screen, if you are using the alt screen
     try vx.queryTerminal(tty.writer(), 1 * std.time.ns_per_s);
 
+    // vx.window() returns the root window. This window is the size of the
+    // terminal and can spawn child windows as logical areas. Child windows
+    // cannot draw outside of their bounds
+    var win = vx.window();
+
+    var game_window = initGameWindow(&win, &game_state);
+
     while (true) {
         // nextEvent blocks until an event is in the queue
         const event = loop.nextEvent();
@@ -103,74 +252,109 @@ pub fn main() !void {
         // has the fields for those events (ie "key_press", "winsize")
         switch (event) {
             .key_press => |key| action = processKeydown(key),
-            .winsize => |ws| try vx.resize(alloc, tty.writer(), ws),
+            .winsize => |ws| {
+                try vx.resize(alloc, tty.writer(), ws);
+                game_state.deinit(alloc);
+                game_state = try .fromWords(
+                    alloc,
+                    &args.words,
+                    args.seed,
+                    args.word_count,
+                );
+
+                win = vx.window();
+                game_window = initGameWindow(&win, &game_state);
+            },
         }
 
         switch (action) {
-            .exit_program => break,
-            .undo => {},
-            .restart => {},
-            .key_press => |codepoint| {
-                _ = codepoint;
-            },
-
             .none => {},
+            .menu => |menu_action| switch (menu_action) {
+                .exit => break,
+                .new_game => {
+                    game_state.deinit(alloc);
+                    args.seed = @bitCast(std.time.microTimestamp());
+                    game_state = try .fromWords(
+                        alloc,
+                        &args.words,
+                        args.seed,
+                        args.word_count,
+                    );
+
+                    win.clear();
+                    game_window = initGameWindow(&win, &game_state);
+                },
+                .restart_game => {
+                    game_state.deinit(alloc);
+                    game_state = try .fromWords(
+                        alloc,
+                        &args.words,
+                        args.seed,
+                        args.word_count,
+                    );
+
+                    win.clear();
+                    game_window = initGameWindow(&win, &game_state);
+                },
+            },
+            .game => |game_action| processGameAction(&game_window, &game_state, game_action),
         }
 
-        // vx.window() returns the root window. This window is the size of the
-        // terminal and can spawn child windows as logical areas. Child windows
-        // cannot draw outside of their bounds
-        const win = vx.window();
-
-        // Clear the entire space because we are drawing in immediate mode.
-        // vaxis double buffers the screen. This new frame will be compared to
-        // the old and only updated cells will be drawn
-        win.clear();
-
-        // Create a style
-        const style: vaxis.Style = .{};
-
-        const box_width = win.width / 2;
-        const box_height = win.height / 2;
-
-        // Create a bordered child window
-        const child = win.child(.{
-            .x_off = (win.width - box_width) / 2,
-            .y_off = (win.height - box_height) / 2,
-            .width = box_width,
-            .height = box_height,
-            .border = .{
-                .where = .all,
-                .style = style,
-            },
-        });
-
-        // todo: Each time the user presses a key we need to render if they typed that correctly.
-        // We dont need to store what the user is typing. We only care about the current letter and how to move backward / foreward.
-
-        const action_name: ?[]const u8 = switch (action) {
-            .exit_program => "exit_program",
-            .undo => "Action.undo",
-            .restart => "Action.restart",
-            .key_press => "Action.key_press",
-
-            .none => null,
-        };
-
-        if (action_name) |aname| {
-            var iter = (try std.unicode.Utf8View.init(aname)).iterator();
-            var col: u16 = 0;
-            while (iter.nextCodepointSlice()) |cp| {
-                child.writeCell(col, 0, .{
-                    .char = .{ .width = 0, .grapheme = cp },
-                    .style = .{},
-                });
-                col += 1;
-            }
+        if (game_state.gameComplete()) {
+            break;
         }
 
         // Render the screen. Using a buffered writer will offer much better
         // performance, but is not required
         try vx.render(tty.writer());
     }
+
+    // Print score and what not
+
+    {
+        // Clear the entire space because we are drawing in immediate mode.
+        // vaxis double buffers the screen. This new frame will be compared to
+        // the old and only updated cells will be drawn
+        // win.clear();
+        win.clear();
+
+        const box_width = (win.width) / 2;
+        const box_height = (win.height) / 2;
+
+        // Create a bordered child window
+        // Create some children for the stuff
+        const child = win.child(.{
+            .x_off = (win.width - box_width) / 2,
+            .y_off = (win.height - box_height) / 2,
+            .width = box_width,
+            .height = box_height,
+            .border = .{ .where = .all, .style = .{} },
+        });
+
+        const mistakes = child.child(.{
+            .x_off = 0,
+            .y_off = 0,
+            .width = box_width / 2,
+            .height = box_height / 2,
+            .border = .{ .where = .all, .style = .{} },
+        });
+
+        var buf: [512]u8 = undefined;
+        const score_buf = try std.fmt.bufPrint(&buf, "{}", .{game_state.mistake_counter});
+
+        const segments = &.{ vaxis.Segment{
+            .text = "total mistakes: ",
+            .style = .{
+                .fg = .{ .index = 9 },
+                .bold = true,
+            },
+        }, vaxis.Segment{
+            .text = score_buf,
+            .style = .{},
+        } };
+        _ = mistakes.print(segments, .{});
+    }
+
+    try vx.render(tty.writer());
+    _ = loop.nextEvent();
 }
