@@ -39,38 +39,47 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
     );
     defer res.deinit();
 
-    if (res.args.help > 0) {
-        const help_style = clap.HelpOptions{
-            .description_indent = 0,
-            .indent = 2,
-            .markdown_lite = true,
-            .description_on_new_line = false,
-            .spacing_between_parameters = 0,
-        };
+    if (res.args.help > 0) printHelp("");
 
-        const result = clap.helpToFile(
-            .stderr(),
-            clap.Help,
-            &params,
-            help_style,
-        );
-
-        result catch std.process.exit(1);
-
-        std.process.exit(0);
-    }
-
-    const words = try Words.parseFromPath(
+    const words = Words.parseFromPath(
         alloc,
         res.args.@"word-file",
         max_word_count,
-    );
+    ) catch |err| {
+        const info = switch (err) {
+            error.MissingInputFile => "You need to provide an input \"word-file\" or pipe the words via stdin.\n\n",
+            error.InvalidUtf8 => "The file provided is not valid utf8\n\n",
+            else => "",
+        };
+        printHelp(info);
+    };
 
     return .{
         .words = words,
         .seed = res.args.seed orelse 0,
         .word_count = res.args.@"word-count" orelse default_word_count,
     };
+}
+
+/// Prints the help to stderr along with an info message and exits the program
+fn printHelp(info: []const u8) noreturn {
+    const help_style = clap.HelpOptions{
+        .description_indent = 0,
+        .indent = 2,
+        .markdown_lite = true,
+        .description_on_new_line = false,
+        .spacing_between_parameters = 0,
+    };
+
+    var buf: [1024]u8 = undefined;
+    var writer = std.fs.File.stderr().writer(&buf);
+
+    writer.interface.writeAll(info) catch std.process.exit(1);
+
+    clap.help(&writer.interface, clap.Help, &params, help_style) catch std.process.exit(1);
+    writer.interface.flush() catch std.process.exit(1);
+
+    std.process.exit(0);
 }
 
 const parsers = struct {
