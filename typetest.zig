@@ -308,6 +308,8 @@ pub fn main() !void {
                 .border = .{ .where = .all, .style = .{} },
             });
 
+            wpm_window.clear();
+
             var wpm_buf: [width]u8 = undefined;
             const seg = vaxis.Segment{
                 .text = try std.fmt.bufPrint(&wpm_buf, "wpm: {}", .{wpm}),

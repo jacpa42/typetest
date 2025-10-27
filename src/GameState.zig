@@ -60,13 +60,13 @@ pub fn wordsPerMinute(self: *const @This()) ?u32 {
 pub fn charactersPerSecond(self: *const @This()) ?f32 {
     const start = self.test_start orelse return null;
     const now = std.time.Instant.now() catch return null;
-    const time_since_start_ns = @as(f32, @floatFromInt(now.since(start))) / 1e9;
+    const elapsed = @as(f32, @floatFromInt(now.since(start))) / 1e9;
 
     const total_u32 = self.correct_counter + self.mistake_counter;
     const total_chars = @as(f32, @floatFromInt(total_u32));
     const accuracy = @as(f32, @floatFromInt(self.correct_counter)) / @max(total_chars, 1.0);
 
-    return (total_chars * accuracy) / @max(time_since_start_ns, 1.0);
+    return (total_chars * accuracy) / @max(elapsed, 1.0);
 }
 
 /// Whether or not we have completed the game
