@@ -4,41 +4,69 @@ const Words = @import("Words.zig");
 cursor_col: u16 = 0,
 cursor_row: u16 = 0,
 
+/// Set to something when the first key is pressed
+test_start: ?std.time.Instant = null,
+/// How many wrong keys the user has pressed
 mistake_counter: u32 = 0,
+/// How many right keys the user has pressed
+correct_counter: u32 = 0,
 
-/// The words in our buffer. known to be utf8
-iter: std.unicode.Utf8Iterator,
+word_buffer: std.ArrayList(u8) = .empty,
 
-/// Randomly generates a new game from a seed
-pub fn fromWords(
+/// An iterator over the `word_buffer`
+iter: std.unicode.Utf8Iterator = .{ .bytes = "", .i = 0 },
+
+/// Generates a new word_buf and resets various parameters.
+///
+/// Note you still need to set the test_start on first keypress
+pub fn newGame(
+    self: *@This(),
     alloc: std.mem.Allocator,
     words: *const Words,
     seed: u64,
     num_words: usize,
-) error{OutOfMemory}!@This() {
+) error{OutOfMemory}!void {
     const word_count = words.wordCount();
-
-    // We want a line of words which is the length of the test length
     var rng = std.Random.DefaultPrng.init(seed);
-    var current_word_buf = std.ArrayList(u8).empty;
-    errdefer current_word_buf.deinit(alloc);
+
+    self.word_buffer.clearRetainingCapacity();
+    self.cursor_col = 0;
+    self.cursor_row = 0;
+    self.mistake_counter = 0;
+    self.correct_counter = 0;
 
     for (0..num_words) |_| {
-        const idx =
-            rng.random().intRangeLessThan(usize, 0, word_count);
+        const idx = rng.random().intRangeLessThan(usize, 0, word_count);
         const next_word = words.getWordUnchecked(idx);
 
-        try current_word_buf.ensureUnusedCapacity(alloc, next_word.len + 1);
-        current_word_buf.appendSliceAssumeCapacity(next_word);
-        current_word_buf.appendAssumeCapacity(' ');
+        try self.word_buffer.ensureUnusedCapacity(alloc, next_word.len + 1);
+        self.word_buffer.appendSliceAssumeCapacity(next_word);
+        self.word_buffer.appendAssumeCapacity(' ');
     }
 
-    const word_buf = try current_word_buf.toOwnedSlice(alloc);
+    // remove the last space
+    const last = self.word_buffer.pop();
+    std.debug.assert(last == ' ');
 
-    std.debug.assert(std.unicode.utf8ValidateSlice(word_buf));
-    const view = std.unicode.Utf8View.initUnchecked(word_buf);
+    std.debug.assert(std.unicode.utf8ValidateSlice(self.word_buffer.items));
+    self.iter = std.unicode.Utf8View.initUnchecked(self.word_buffer.items).iterator();
+}
 
-    return @This(){ .iter = view.iterator() };
+pub fn wordsPerMinute(self: *const @This()) ?u32 {
+    const cps = self.charactersPerSecond();
+    return if (cps) |cpm| @intFromFloat(cpm * 12.0) else null;
+}
+
+pub fn charactersPerSecond(self: *const @This()) ?f32 {
+    const start = self.test_start orelse return null;
+    const now = std.time.Instant.now() catch return null;
+    const time_since_start_ns = @as(f32, @floatFromInt(now.since(start))) / 1e9;
+
+    const total_u32 = self.correct_counter + self.mistake_counter;
+    const total_chars = @as(f32, @floatFromInt(total_u32));
+    const accuracy = @as(f32, @floatFromInt(self.correct_counter)) / @max(total_chars, 1.0);
+
+    return (total_chars * accuracy) / @max(time_since_start_ns, 1.0);
 }
 
 /// Whether or not we have completed the game
@@ -47,8 +75,8 @@ pub fn gameComplete(self: *const @This()) bool {
 }
 
 // the slice in the iterator is owned so we deinit it when we are done
-pub fn deinit(self: *const @This(), alloc: std.mem.Allocator) void {
-    alloc.free(self.iter.bytes);
+pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+    self.word_buffer.deinit(alloc);
 }
 
 /// Moves the cursor forward 1 position in a square grid

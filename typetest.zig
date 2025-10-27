@@ -67,7 +67,7 @@ fn processKeydown(key: vaxis.Key) Action {
 }
 
 /// Setups the draw window for the game
-fn initGameWindow(
+fn newGameWindow(
     window: *const vaxis.Window,
     state: *const GameState,
 ) vaxis.Window {
@@ -137,11 +137,15 @@ fn handleKeyPress(
     codepoint: u21,
 ) void {
     if (state.nextCodepoint()) |char| {
+        if (state.test_start == null) {
+            state.test_start = std.time.Instant.now() catch unreachable;
+        }
         const decoded = std.unicode.utf8Decode(char) catch unreachable;
         var style: vaxis.Style = undefined;
 
         if (codepoint == decoded) {
             style = Styles.typed_right;
+            state.correct_counter += 1;
         } else {
             style = Styles.typed_wrong;
             state.mistake_counter += 1;
@@ -197,7 +201,8 @@ pub fn main() !void {
     var args = try parseArgs(alloc);
     defer args.deinit(alloc);
 
-    var game_state = try GameState.fromWords(
+    var game_state = GameState{};
+    try game_state.newGame(
         alloc,
         &args.words,
         args.seed,
@@ -241,7 +246,7 @@ pub fn main() !void {
     // cannot draw outside of their bounds
     var win = vx.window();
 
-    var game_window = initGameWindow(&win, &game_state);
+    var game_window = newGameWindow(&win, &game_state);
 
     while (true) {
         // nextEvent blocks until an event is in the queue
@@ -254,16 +259,8 @@ pub fn main() !void {
             .key_press => |key| action = processKeydown(key),
             .winsize => |ws| {
                 try vx.resize(alloc, tty.writer(), ws);
-                game_state.deinit(alloc);
-                game_state = try .fromWords(
-                    alloc,
-                    &args.words,
-                    args.seed,
-                    args.word_count,
-                );
-
                 win = vx.window();
-                game_window = initGameWindow(&win, &game_state);
+                game_window = newGameWindow(&win, &game_state);
             },
         }
 
@@ -272,9 +269,9 @@ pub fn main() !void {
             .menu => |menu_action| switch (menu_action) {
                 .exit => break,
                 .new_game => {
-                    game_state.deinit(alloc);
                     args.seed = @bitCast(std.time.microTimestamp());
-                    game_state = try .fromWords(
+
+                    try game_state.newGame(
                         alloc,
                         &args.words,
                         args.seed,
@@ -282,11 +279,9 @@ pub fn main() !void {
                     );
 
                     win.clear();
-                    game_window = initGameWindow(&win, &game_state);
                 },
                 .restart_game => {
-                    game_state.deinit(alloc);
-                    game_state = try .fromWords(
+                    try game_state.newGame(
                         alloc,
                         &args.words,
                         args.seed,
@@ -294,14 +289,30 @@ pub fn main() !void {
                     );
 
                     win.clear();
-                    game_window = initGameWindow(&win, &game_state);
                 },
             },
             .game => |game_action| processGameAction(&game_window, &game_state, game_action),
         }
 
-        if (game_state.gameComplete()) {
-            break;
+        if (game_state.gameComplete()) break;
+
+        if (game_state.wordsPerMinute()) |wpm| {
+            // place the wpm window above and to the left of the main game window
+            const height = 3;
+            const width = 10; // 5 for wpm: and 3 for wpm and 2 for border
+            var wpm_window = win.child(.{
+                .x_off = game_window.x_off,
+                .y_off = game_window.y_off -| height,
+                .width = width,
+                .height = height,
+                .border = .{ .where = .all, .style = .{} },
+            });
+
+            var wpm_buf: [width]u8 = undefined;
+            const seg = vaxis.Segment{
+                .text = try std.fmt.bufPrint(&wpm_buf, "wpm: {}", .{wpm}),
+            };
+            _ = wpm_window.printSegment(seg, .{});
         }
 
         // Render the screen. Using a buffered writer will offer much better
@@ -310,7 +321,6 @@ pub fn main() !void {
     }
 
     // Print score and what not
-
     {
         // Clear the entire space because we are drawing in immediate mode.
         // vaxis double buffers the screen. This new frame will be compared to
@@ -341,20 +351,33 @@ pub fn main() !void {
 
         var buf: [512]u8 = undefined;
         const score_buf = try std.fmt.bufPrint(&buf, "{}", .{game_state.mistake_counter});
+        const wpm_buf = try std.fmt.bufPrint(buf[score_buf.len..], "{}", .{game_state.wordsPerMinute() orelse 0});
 
-        const segments = &.{ vaxis.Segment{
-            .text = "total mistakes: ",
-            .style = .{
-                .fg = .{ .index = 9 },
-                .bold = true,
+        const segments = &.{
+            vaxis.Segment{
+                .text = "total mistakes: ",
+                .style = .{
+                    .fg = .{ .index = 9 },
+                    .bold = true,
+                },
             },
-        }, vaxis.Segment{
-            .text = score_buf,
-            .style = .{},
-        } };
+            vaxis.Segment{ .text = score_buf },
+            vaxis.Segment{ .text = "\n" },
+            vaxis.Segment{
+                .text = "average wpm: ",
+                .style = .{
+                    .fg = .{ .index = 10 },
+                    .bold = true,
+                    .italic = true,
+                },
+            },
+            vaxis.Segment{ .text = wpm_buf },
+        };
         _ = mistakes.print(segments, .{});
     }
 
     try vx.render(tty.writer());
+
+    // Wait a bit for user input then exit
     _ = loop.nextEvent();
 }
