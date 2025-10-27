@@ -89,8 +89,6 @@ pub fn parseFromFile(
     }
     try newlines_array_list.append(gpa, word_buf.len);
 
-    std.debug.print("{any}\n", .{newlines_array_list});
-
     const newlines = try newlines_array_list.toOwnedSlice(gpa);
 
     return @This(){ .word_buf = word_buf, .newlines = newlines };
