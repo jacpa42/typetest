@@ -16,8 +16,8 @@ const params = clap.parseParamsComptime(
 /// All the relevant stuff we need after argument parsing
 pub const Args = struct {
     words: Words,
-    seed: u64,
-    word_count: u64,
+    seed: u64 = 0,
+    word_count: u64 = 0,
 
     pub fn deinit(self: *const @This(), alloc: std.mem.Allocator) void {
         self.words.deinit(alloc);
@@ -54,7 +54,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         printHelp(info);
     };
 
-    return .{
+    return Args{
         .words = words,
         .seed = res.args.seed orelse 0,
         .word_count = res.args.@"word-count" orelse default_word_count,

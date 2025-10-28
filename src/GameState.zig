@@ -1,6 +1,8 @@
 const std = @import("std");
 const Words = @import("Words.zig");
 
+const now = @import("time.zig").now;
+
 cursor_col: u16 = 0,
 cursor_row: u16 = 0,
 
@@ -29,11 +31,13 @@ pub fn newGame(
     const word_count = words.wordCount();
     var rng = std.Random.DefaultPrng.init(seed);
 
-    self.word_buffer.clearRetainingCapacity();
-    self.cursor_col = 0;
-    self.cursor_row = 0;
-    self.mistake_counter = 0;
-    self.correct_counter = 0;
+    // Keep the word_buffer, otherwise reinit everything
+    {
+        var word_buffer = self.word_buffer;
+        word_buffer.clearRetainingCapacity();
+        self.* = .{};
+        self.word_buffer = word_buffer;
+    }
 
     for (0..num_words) |_| {
         const idx = rng.random().intRangeLessThan(usize, 0, word_count);
@@ -59,8 +63,7 @@ pub fn wordsPerMinute(self: *const @This()) ?u32 {
 
 pub fn charactersPerSecond(self: *const @This()) ?f32 {
     const start = self.test_start orelse return null;
-    const now = std.time.Instant.now() catch return null;
-    const elapsed = @as(f32, @floatFromInt(now.since(start))) / 1e9;
+    const elapsed = @as(f32, @floatFromInt(now().since(start))) / 1e9;
 
     const total_u32 = self.correct_counter + self.mistake_counter;
     const total_chars = @as(f32, @floatFromInt(total_u32));

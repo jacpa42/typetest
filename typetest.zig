@@ -2,8 +2,11 @@ const std = @import("std");
 const clap = @import("clap");
 const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
+const cliargs = @import("src/args.zig");
 
-const parseArgs = @import("src/args.zig").parseArgs;
+const now = @import("src/time.zig").now;
+const parseArgs = cliargs.parseArgs;
+const Args = cliargs.Args;
 const GameState = @import("src/GameState.zig");
 
 const Event = union(enum) {
@@ -76,15 +79,15 @@ fn newGameWindow(
     // the old and only updated cells will be drawn
     // win.clear();
 
-    const box_width = (window.width * 2) / 3;
-    const box_height = (window.height * 2) / 3;
+    const game_window_width = (window.width * 2) / 3;
+    const game_window_height = (window.height * 2) / 3;
 
     // Create a bordered child window
     const child = window.child(.{
-        .x_off = (window.width - box_width) / 2,
-        .y_off = (window.height - box_height) / 2,
-        .width = box_width,
-        .height = box_height,
+        .x_off = (window.width - game_window_width) / 2,
+        .y_off = (window.height - game_window_height) / 2,
+        .width = game_window_width,
+        .height = game_window_height,
         .border = .{ .where = .all, .style = .{} },
     });
 
@@ -95,6 +98,21 @@ fn newGameWindow(
     _ = child.printSegment(segment, .{});
 
     return child;
+}
+
+/// Starts a new game and reinits the game window
+fn newGame(
+    alloc: std.mem.Allocator,
+    args: *Args,
+    game_state: *GameState,
+    game_window: *vaxis.Window,
+) error{OutOfMemory}!void {
+    try game_state.newGame(alloc, &args.words, args.seed, args.word_count);
+    game_window.clear();
+    _ = game_window.printSegment(.{
+        .text = game_state.word_buffer.items,
+        .style = Styles.untyped,
+    }, .{});
 }
 
 fn handleUndo(
@@ -137,9 +155,7 @@ fn handleKeyPress(
     codepoint: u21,
 ) void {
     if (state.nextCodepoint()) |char| {
-        if (state.test_start == null) {
-            state.test_start = std.time.Instant.now() catch unreachable;
-        }
+        if (state.test_start == null) state.test_start = now();
         const decoded = std.unicode.utf8Decode(char) catch unreachable;
         var style: vaxis.Style = undefined;
 
@@ -246,80 +262,73 @@ pub fn main() !void {
     // cannot draw outside of their bounds
     var win = vx.window();
 
+    // Create a bordered child window
     var game_window = newGameWindow(&win, &game_state);
 
-    while (true) {
+    const frame_delay: u64 = 50 * 1e6; // ns
+
+    game_loop: while (true) {
+        const frame_start = now();
+
         // nextEvent blocks until an event is in the queue
-        const event = loop.nextEvent();
-        var action: Action = .none;
 
         // Exhaustive switching ftw. Vaxis will send events if your Event enum
         // has the fields for those events (ie "key_press", "winsize")
-        switch (event) {
-            .key_press => |key| action = processKeydown(key),
-            .winsize => |ws| {
-                try vx.resize(alloc, tty.writer(), ws);
-                win = vx.window();
-                game_window = newGameWindow(&win, &game_state);
-            },
+        while (loop.tryEvent()) |event| {
+            switch (event) {
+                .winsize => |ws| {
+                    try vx.resize(alloc, tty.writer(), ws);
+                    win = vx.window();
+                    game_window = newGameWindow(&win, &game_state);
+                },
+
+                .key_press => |key| switch (processKeydown(key)) {
+                    .none => {},
+                    .menu => |menu_action| switch (menu_action) {
+                        .exit => break :game_loop,
+                        .new_game => {
+                            args.seed = @bitCast(std.time.microTimestamp());
+                            try newGame(alloc, &args, &game_state, &game_window);
+                        },
+                        .restart_game => try newGame(alloc, &args, &game_state, &game_window),
+                    },
+                    .game => |game_action| processGameAction(&game_window, &game_state, game_action),
+                },
+            }
         }
 
-        switch (action) {
-            .none => {},
-            .menu => |menu_action| switch (menu_action) {
-                .exit => break,
-                .new_game => {
-                    args.seed = @bitCast(std.time.microTimestamp());
+        if (game_state.gameComplete()) break :game_loop;
 
-                    try game_state.newGame(
-                        alloc,
-                        &args.words,
-                        args.seed,
-                        args.word_count,
-                    );
+        // place the wpm window above and to the left of the main game window
+        const height = 3;
+        const width = 12; // 5 for wpm: and 3 for wpm and 2 for border + 2 for sex
+        var wpm_window = win.child(.{
+            .x_off = game_window.x_off,
+            .y_off = game_window.y_off -| height,
+            .width = width,
+            .height = height,
+            .border = .{ .where = .all, .style = .{} },
+        });
 
-                    win.clear();
-                },
-                .restart_game => {
-                    try game_state.newGame(
-                        alloc,
-                        &args.words,
-                        args.seed,
-                        args.word_count,
-                    );
+        wpm_window.clear();
 
-                    win.clear();
-                },
-            },
-            .game => |game_action| processGameAction(&game_window, &game_state, game_action),
-        }
-
-        if (game_state.gameComplete()) break;
-
+        var wpm_buf: [width]u8 = undefined;
+        var seg = vaxis.Segment{
+            .text = "null",
+            .style = .{ .dim = true },
+        };
         if (game_state.wordsPerMinute()) |wpm| {
-            // place the wpm window above and to the left of the main game window
-            const height = 3;
-            const width = 10; // 5 for wpm: and 3 for wpm and 2 for border
-            var wpm_window = win.child(.{
-                .x_off = game_window.x_off,
-                .y_off = game_window.y_off -| height,
-                .width = width,
-                .height = height,
-                .border = .{ .where = .all, .style = .{} },
-            });
-
-            wpm_window.clear();
-
-            var wpm_buf: [width]u8 = undefined;
-            const seg = vaxis.Segment{
-                .text = try std.fmt.bufPrint(&wpm_buf, "wpm: {}", .{wpm}),
-            };
-            _ = wpm_window.printSegment(seg, .{});
+            seg.text = try std.fmt.bufPrint(&wpm_buf, "wpm: {}", .{wpm});
+            seg.style = .{};
         }
+        _ = wpm_window.printSegment(seg, .{});
 
         // Render the screen. Using a buffered writer will offer much better
         // performance, but is not required
         try vx.render(tty.writer());
+
+        const elapsed_ms = now().since(frame_start);
+        std.Thread.sleep(frame_delay -| elapsed_ms);
     }
 
     // Print score and what not
