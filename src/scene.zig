@@ -12,6 +12,8 @@ const TimeGameStatistic = stat.TimeGameStatistic;
 
 /// This is the number of sentences which we try to render while the user is typing.
 pub const NUM_RENDER_LINES = 5;
+/// If the user types past this line then we generate more lines
+pub const MAX_CURRENT_LINE = 2;
 
 pub const InGameAction = union(enum) {
     /// Returns to main menu
@@ -216,6 +218,9 @@ pub const TimeScene = struct {
     /// How many right keys the user has pressed
     correct_counter: u32 = 0,
 
+    // todo: I want to scroll only when I reach MAX_CURRENT_LINE. I will need to
+    // rework the way in which the game is processed and rendered :(
+    //
     /// A buffer which holds the sentences. Note that each line is allocated using the `alloc` field.
     lines: [NUM_RENDER_LINES]Line,
 
@@ -469,9 +474,7 @@ pub const TimeScene = struct {
         var true_codepoint_slice: []const u8 = undefined;
         var true_codepoint: u21 = undefined;
 
-        if (self.test_start == null) {
-            self.test_start = now();
-        }
+        if (self.test_start == null) self.test_start = now();
 
         if (self.lines[0].nextCodepoint()) |next_codepoint_slice| {
             true_codepoint_slice = next_codepoint_slice;
