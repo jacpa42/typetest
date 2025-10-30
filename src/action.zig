@@ -53,3 +53,22 @@ pub const MenuAction = enum {
         return .none;
     }
 };
+
+/// Actions in the results screen
+pub const ResultsAction = union(enum) {
+    none,
+    /// quit program
+    quit,
+    /// Returns to main menu
+    return_to_menu,
+
+    /// Process the event from vaxis and optionally emit an action to process
+    pub fn processKeydown(key: vaxis.Key) @This() {
+        const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
+
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches('q', .{})) return .return_to_menu;
+
+        return .none;
+    }
+};

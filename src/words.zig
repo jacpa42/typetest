@@ -50,15 +50,16 @@ pub const Words = struct {
         codepoint_limit: usize,
     ) error{OutOfMemory}!void {
         array_list.clearRetainingCapacity();
+        var remaining_codepoints = codepoint_limit;
 
         var next_word = self.randomWord();
-        var num_spaces = 0;
-        while (codepoint_limit >= next_word.num_codepoints + num_spaces) {
+        var num_spaces: usize = 0;
+        while (remaining_codepoints >= next_word.num_codepoints + num_spaces) {
             num_spaces = array_list.items.len;
 
             try array_list.append(alloc, next_word);
 
-            codepoint_limit -= next_word.num_codepoints;
+            remaining_codepoints -= next_word.num_codepoints;
             next_word = self.randomWord();
         }
     }
@@ -74,7 +75,7 @@ pub const Words = struct {
         word_buf: []const u8,
         max_words: usize,
     ) error{ OutOfMemory, InvalidUtf8 }!@This() {
-        var words = try std.ArrayList(usize).initCapacity(gpa, max_words + 1);
+        var words = try std.ArrayList(Word).initCapacity(gpa, max_words + 1);
         errdefer words.deinit(gpa);
 
         var utf8_iter = (try std.unicode.Utf8View.init(word_buf)).iterator();
@@ -121,10 +122,7 @@ pub const Words = struct {
             }
         }
 
-        return @This(){
-            .buf = word_buf,
-            .words = try words.toOwnedSlice(gpa),
-        };
+        return @This(){ .words = try words.toOwnedSlice(gpa) };
     }
 
     test "Words parsing: empty input" {
@@ -176,9 +174,10 @@ const WordRng = union(enum) {
     fn generate(self: *WordRng, max: usize) usize {
         switch (self.*) {
             .sequential => |*idx| {
-                idx.* +%= 1;
-                if (idx.* >= max) idx.* = 0;
-                return idx;
+                var new_idx = idx.* +% 1;
+                defer idx.* = new_idx;
+                if (new_idx >= max) new_idx = 0;
+                return new_idx;
             },
             .random => |*rng| return rng.*.random().intRangeLessThan(usize, 0, max),
         }

@@ -98,26 +98,14 @@ pub fn prevCodepoint(self: *@This()) ?[]const u8 {
 
         self.current_word -= 1;
 
-        self.iter = std.unicode.Utf8View.initUnchecked(self.words.items[self.current_word]).iterator();
+        // Put the iterator at the  end of the previous word
+        self.iter = std.unicode.Utf8View.initUnchecked(self.words.items[self.current_word].buf).iterator();
+        self.iter.i = self.iter.bytes.len;
 
         return " ";
     }
 
-    const end = self.iter.i;
-
-    while (true) {
-        self.iter.i -= 1;
-
-        // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
-        // Once this is no longer the case then we have reached the previous code point.
-        // see https://en.wikipedia.org/wiki/UTF-8#Description
-
-        if (self.iter.i == 0 or (self.iter.bytes[self.iter.i] & 0xC0) != 0x80) {
-            break;
-        }
-    }
-
-    return self.iter.bytes[self.iter.i..end];
+    return Util.prevCodepoint(&self.iter);
 }
 
 /// Returns the previous codepoint. Returns `null` iff at the start of the line.
@@ -128,23 +116,45 @@ pub fn peekPrevCodepoint(self: *@This()) ?[]const u8 {
         return if (self.current_word == 0) null else " ";
     }
 
-    const end = self.iter.i;
-    defer self.iter.i = end;
+    return Util.peekPrevCodepoint(&self.iter);
+}
 
-    while (true) {
-        self.iter.i -= 1;
+const Util = struct {
+    // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
+    // Once this is no longer the case then we have reached the previous code point.
+    // see https://en.wikipedia.org/wiki/UTF-8#Description
+    fn prevCodepoint(it: *std.unicode.Utf8Iterator) ?[]const u8 {
+        if (it.i == 0) return null;
 
-        // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
-        // Once this is no longer the case then we have reached the previous code point.
-        // see https://en.wikipedia.org/wiki/UTF-8#Description
+        const end = it.i;
+        it.i -= 1;
 
-        if (self.iter.i == 0 or (self.iter.bytes[self.iter.i] & 0xC0) != 0x80) {
-            break;
+        while (it.i > 0 and it.bytes[it.i] & 0xC0 == 0x80) {
+            it.i -= 1;
         }
+
+        return it.bytes[it.i..end];
     }
 
-    return self.iter.bytes[self.iter.i..end];
-}
+    // The bytes right of the first byte have their first two bits set to 0b10. So we check for this.
+    // Once this is no longer the case then we have reached the previous code point.
+    // see https://en.wikipedia.org/wiki/UTF-8#Description
+    //
+    // Does not mutate the iterator but does require a non const pointer to not copy values unnecessarily.
+    fn peekPrevCodepoint(it: *std.unicode.Utf8Iterator) ?[]const u8 {
+        if (it.i == 0) return null;
+
+        const end = it.i;
+        defer it.i = end;
+        it.i -= 1;
+
+        while (it.i > 0 and it.bytes[it.i] & 0xC0 == 0x80) {
+            it.i -= 1;
+        }
+
+        return it.bytes[it.i..end];
+    }
+};
 
 test "unicode shenanigans" {
     const cp_1 = "_";

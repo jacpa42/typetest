@@ -16,9 +16,11 @@ const Event = union(enum) {
     winsize: vaxis.Winsize,
 };
 
+const MAX_MEMORY = 5 * 1024 * 1024;
+
 pub fn main() !void {
     // Lets try to reuse a 1 MIB buffer for all our memory needs :)
-    const mem: []u8 = try std.heap.page_allocator.alloc(u8, 1024 * 1024);
+    const mem: []u8 = try std.heap.page_allocator.alloc(u8, MAX_MEMORY);
     defer std.heap.page_allocator.free(mem);
 
     var gpa = std.heap.FixedBufferAllocator.init(mem);
@@ -27,7 +29,6 @@ pub fn main() !void {
     var args = try parseArgs(alloc);
     defer args.deinit(alloc);
 
-    const frame_delay: u64 = 6944 * 1e3; // 6.644ms / 144hz
     var game_state = State{};
     defer game_state.deinit(alloc);
 
@@ -48,22 +49,19 @@ pub fn main() !void {
     try vx.queryTerminal(tty.writer(), 1 * std.time.ns_per_s);
 
     var win = vx.window();
-    var render_width = @min(30, win.width / 2);
+    var render_width = (win.width * 3) / 5;
     var render_height = @min(scene.NUM_RENDER_LINES, win.height);
 
     game_loop: while (true) {
         const frame_start = now();
-        defer {
-            const elapsed_ms = now().since(frame_start);
-            std.Thread.sleep(frame_delay -| elapsed_ms);
-        }
+        defer game_state.tickFrame(frame_start, 60);
 
         while (loop.tryEvent()) |event| {
             switch (event) {
                 .winsize => |ws| {
                     try vx.resize(alloc, tty.writer(), ws);
                     win = vx.window();
-                    render_width = @min(30, win.width / 2);
+                    render_width = (win.width * 3) / 5;
                     render_height = @min(scene.NUM_RENDER_LINES, win.height);
                 },
 
@@ -76,14 +74,29 @@ pub fn main() !void {
                         &args,
                     );
                     switch (result) {
-                        .should_quit => break :game_loop,
-                        .redraw => continue,
+                        .continue_game => {},
+                        .graceful_exit => break :game_loop,
                     }
                 },
             }
         }
 
-        game_state.render(win);
+        switch (game_state.current_scene) {
+            .time_scene => |*time_scene| {
+                if (time_scene.isComplete()) |results| {
+                    time_scene.deinit(alloc);
+                    game_state.current_scene = scene.Scene{ .test_results_scene = results };
+                }
+            },
+            .menu_scene => {},
+            .test_results_scene => {},
+        }
+
+        game_state.render(.{
+            .win = win,
+            .words = &args.words,
+            .current_frame_time_ns = game_state.frame_time_ns,
+        });
         // Render the screen. Using a buffered writer will offer much better
         // performance, but is not required
         try vx.render(tty.writer());

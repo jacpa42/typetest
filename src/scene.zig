@@ -6,7 +6,7 @@ const stat = @import("scene/statistics.zig");
 const now = @import("time.zig").now;
 const Words = @import("words.zig").Words;
 const Word = @import("words.zig").Word;
-const TimeStatWindow = stat.TimeStatWindow;
+const TimeGameStatistic = stat.TimeGameStatistic;
 
 /// This is the number of sentences which we try to render while the user is typing.
 pub const NUM_RENDER_LINES = 5;
@@ -59,33 +59,72 @@ const CharacterStyle = enum(u2) {
     }
 };
 
-pub const SceneType = enum { menu, timegame };
-pub const Scene = union(SceneType) {
-    menu: MenuScene,
-    timegame: TimeScene,
+pub const Scene = union(enum) {
+    menu_scene: MenuScene,
+    time_scene: TimeScene,
+    test_results_scene: TestResultsScene,
 };
 
 /// All the information on how well we did during the test
-pub const TestResults = struct {
+pub const TestResultsScene = struct {
     average_wpm: f32,
+
+    /// Clears screen and renders the current state.
+    pub fn render(
+        self: *const @This(),
+        data: RenderData,
+    ) void {
+        var win = data.win;
+        win.clear();
+
+        const layout = @import("scene/window_layout.zig");
+        const game_window = layout.gameWindow(win);
+
+        // as we add more stats here we need to change how they are rendered
+
+        const middle_box_width = game_window.width / 2;
+        const middle_box_height = game_window.height / 2;
+        const middle_box = game_window.child(.{
+            .width = middle_box_width,
+            .height = middle_box_height,
+            .x_off = (game_window.width - middle_box_width) / 2,
+            .y_off = (game_window.height - middle_box_height) / 2,
+            .border = .{ .where = .all },
+        });
+
+        var buf: [256]u8 = undefined;
+
+        const print_buf = std.fmt.bufPrint(
+            &buf,
+            "average wpm: {d:4.2}",
+            .{self.average_wpm},
+        ) catch std.process.exit(1);
+
+        // const col_offset = (middle_box_width -| @as(u16, @truncate(print_buf.len))) / 2;
+        const col_offset = 0;
+        _ = middle_box.printSegment(
+            .{ .text = print_buf },
+            .{ .col_offset = col_offset },
+        );
+    }
 };
 
 pub const MenuItem = enum {
-    Exit,
-    Time15,
-    Time30,
-    Time60,
-    Time120,
+    exit,
+    time15,
+    time30,
+    time60,
+    time120,
 
     pub const COUNT: comptime_int = @typeInfo(@This()).@"enum".fields.len;
 
     inline fn displayName(self: @This()) []const u8 {
         return switch (self) {
-            .Exit => "quit",
-            .Time15 => "  15s",
-            .Time30 => "  30s",
-            .Time60 => "  60s",
-            .Time120 => " 120s",
+            .exit => "quit",
+            .time15 => "  15s",
+            .time30 => "  30s",
+            .time60 => "  60s",
+            .time120 => " 120s",
         };
     }
 };
@@ -94,33 +133,13 @@ pub const MenuScene = struct {
     selection: MenuItem = @enumFromInt(0),
 
     /// Clears screen and renders the current state
-    pub fn render(self: *const @This(), win: vaxis.Window) void {
+    pub fn render(self: *const @This(), data: RenderData) void {
+        var win = data.win;
         win.clear();
 
-        const main_window_height = win.height * 2 / 3;
-        const main_window_width = win.width * 2 / 3;
-        const main_window = win.child(.{
-            .x_off = (win.width - main_window_width) / 2,
-            .y_off = (win.height - main_window_height) / 2,
-            .width = main_window_width,
-            .height = main_window_height,
-            .border = .{
-                .style = .{
-                    .bg = .{ .index = 5 },
-                },
-                .where = .all,
-                .glyphs = .{ .custom = .{"■"} ** 6 },
-            },
-        });
-
-        const list_items_height = MenuItem.COUNT;
-        const list_items_width = main_window.width;
-        const list_items = main_window.child(.{
-            .x_off = (main_window_width - list_items_width) / 2,
-            .y_off = (main_window_height - list_items_height) / 2,
-            .width = list_items_width,
-            .height = list_items_height,
-        });
+        const layout = @import("scene/window_layout.zig");
+        const main_window = layout.gameWindow(win);
+        const list_items = layout.menuListItems(main_window);
 
         const SegmentWithOffset = struct { seg: vaxis.Segment, num_codepoints: u16 };
         var menu_item_segment_offsets: [MenuItem.COUNT]SegmentWithOffset = comptime blk: {
@@ -145,11 +164,11 @@ pub const MenuScene = struct {
         };
 
         for (menu_item_segment_offsets, 0..) |segment_offset, row| {
-            std.debug.assert(list_items_width >= segment_offset.num_codepoints);
+            std.debug.assert(list_items.width >= segment_offset.num_codepoints);
 
             const opts = vaxis.Window.PrintOptions{
                 .row_offset = @truncate(row),
-                .col_offset = (list_items_width -| segment_offset.num_codepoints) / 2,
+                .col_offset = (list_items.width -| segment_offset.num_codepoints) / 2,
                 .wrap = .none,
             };
 
@@ -170,6 +189,13 @@ pub const MenuScene = struct {
             self.selection = @enumFromInt(next);
         }
     }
+};
+
+/// Stuff we need to pass in to the `render` method from global state to render the game
+pub const RenderData = struct {
+    win: vaxis.Window,
+    words: *Words,
+    current_frame_time_ns: u64,
 };
 
 /// This is just a bunch of unicode codepoints seperated by spaces.
@@ -207,9 +233,9 @@ pub const TimeScene = struct {
 
     pub fn init(
         alloc: std.mem.Allocator,
-        test_duration_ns: u64,
-        codepoint_limit: usize,
         words: *Words,
+        codepoint_limit: usize,
+        test_duration_ns: u64,
     ) error{OutOfMemory}!@This() {
         var lines: [NUM_RENDER_LINES]Line = undefined;
 
@@ -232,7 +258,11 @@ pub const TimeScene = struct {
     }
 
     /// Clears screen and renders the current state.
-    pub fn render(self: *const @This(), win: vaxis.Window) void {
+    pub fn render(
+        self: *const @This(),
+        data: RenderData,
+    ) void {
+        var win = data.win;
         win.clear();
 
         const layout = @import("scene/window_layout.zig");
@@ -241,11 +271,12 @@ pub const TimeScene = struct {
 
         self.renderTextWindow(text_window);
 
-        var splits: [TimeStatWindow.COUNT]vaxis.Window = undefined;
+        var splits: [TimeGameStatistic.COUNT]vaxis.Window = undefined;
         layout.runningStatisticsWindows(game_window, &splits);
 
-        inline for (@typeInfo(TimeStatWindow).@"enum".fields, splits) |statistic, window| {
-            self.renderStatWindow(window, @enumFromInt(statistic.value));
+        for (0.., splits) |idx, draw_window| {
+            const statistic: TimeGameStatistic = @enumFromInt(idx);
+            self.renderStatWindow(data, draw_window, statistic);
         }
     }
 
@@ -259,8 +290,8 @@ pub const TimeScene = struct {
         // Render the stuff the user has typed thus far
         {
             var line = self.lines[0];
-
             var col: u16 = @truncate((win.width -| line.num_codepoints) / 2);
+
             for (self.render_characters.items) |typed_char| {
                 const cell = vaxis.Cell{
                     .char = .{
@@ -273,6 +304,20 @@ pub const TimeScene = struct {
                 col += 1;
             }
 
+            // render the next char with the cursor style
+            if (line.nextCodepoint()) |cursor_char| {
+                const cell = vaxis.Cell{
+                    .char = .{
+                        .grapheme = cursor_char,
+                        .width = 1,
+                    },
+                    .style = CharacterStyle.cursor.style(),
+                };
+                win.writeCell(col, vertical_offset, cell);
+                col += 1;
+            }
+
+            // render the rest of the line
             while (line.nextCodepoint()) |codepoint| {
                 const cell = vaxis.Cell{
                     .char = .{
@@ -335,40 +380,53 @@ pub const TimeScene = struct {
     /// Clears screen and renders the current state.
     pub fn renderStatWindow(
         self: *const @This(),
-        win: vaxis.Window,
-        statistic: TimeStatWindow,
+        data: RenderData,
+        text_box: vaxis.Window,
+        statistic: TimeGameStatistic,
     ) void {
         var buf: [128]u8 = undefined;
+        var segment: vaxis.Segment = .{ .text = "" };
+
+        defer {
+            const len = std.unicode.utf8CountCodepoints(segment.text) catch unreachable;
+            const col_offset = (text_box.width -| @as(u16, @truncate(len))) / 2;
+
+            _ = text_box.printSegment(segment, .{
+                .col_offset = col_offset,
+                .wrap = .none,
+            });
+        }
 
         switch (statistic) {
+            .fps => {
+                const frames_per_second = 1e9 / @as(f32, @floatFromInt(data.current_frame_time_ns));
+                segment.text = std.fmt.bufPrint(
+                    &buf,
+                    "fps: {d}",
+                    .{frames_per_second},
+                ) catch unreachable;
+            },
             .wpm => {
-                var wpm: f32 = 0.0;
+                var words_per_minute: f32 = 0.0;
                 if (self.test_start) |start| {
-                    wpm = wordsPerMinute(
+                    words_per_minute = wordsPerMinute(
                         self.correct_counter,
                         self.mistake_counter,
                         start,
                     );
                 }
-
-                const segment = vaxis.Segment{
-                    .text = std.fmt.bufPrint(
-                        &buf,
-                        "wpm: {:.1}",
-                        .{wpm},
-                    ) catch unreachable,
-                };
-                _ = win.printSegment(segment, .{});
+                segment.text = std.fmt.bufPrint(
+                    &buf,
+                    "wpm: {d:4.2}",
+                    .{words_per_minute},
+                ) catch unreachable;
             },
             .mistake_counter => {
-                const segment = vaxis.Segment{
-                    .text = std.fmt.bufPrint(
-                        &buf,
-                        "mistakes: {}",
-                        .{self.mistake_counter},
-                    ) catch unreachable,
-                };
-                _ = win.printSegment(segment, .{});
+                segment.text = std.fmt.bufPrint(
+                    &buf,
+                    "mistakes: {}",
+                    .{self.mistake_counter},
+                ) catch unreachable;
             },
             .time_left => {
                 var time_left_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) / 1e9;
@@ -376,15 +434,11 @@ pub const TimeScene = struct {
                     const elapsed = @as(f32, @floatFromInt(now().since(start))) / 1e9;
                     time_left_seconds = @max(0.0, time_left_seconds - elapsed);
                 }
-
-                const segment = vaxis.Segment{
-                    .text = std.fmt.bufPrint(
-                        &buf,
-                        "time left: {:.1}",
-                        .{time_left_seconds},
-                    ) catch unreachable,
-                };
-                _ = win.printSegment(segment, .{});
+                segment.text = std.fmt.bufPrint(
+                    &buf,
+                    "time left: {:.1}",
+                    .{time_left_seconds},
+                ) catch unreachable;
             },
         }
     }
@@ -431,7 +485,7 @@ pub const TimeScene = struct {
 
     /// The `InGameAction.undo` action handler
     pub fn processUndo(self: *@This()) void {
-        if (self.lines[0].peekPrevCodepoint() != null) {
+        if (self.lines[0].prevCodepoint() != null) {
             _ = self.render_characters.pop();
         }
     }
@@ -451,6 +505,10 @@ pub const TimeScene = struct {
     ) error{OutOfMemory}!void {
         var true_codepoint_slice: []const u8 = undefined;
         var true_codepoint: u21 = undefined;
+
+        if (self.test_start == null) {
+            self.test_start = now();
+        }
 
         if (self.lines[0].nextCodepoint()) |next_codepoint_slice| {
             true_codepoint_slice = next_codepoint_slice;
@@ -501,13 +559,13 @@ pub const TimeScene = struct {
         });
     }
 
-    fn testIsComplete(self: *const @This()) ?TestResults {
+    pub fn isComplete(self: *const @This()) ?TestResultsScene {
         const test_start = self.test_start orelse return null;
 
         // Return if we are still in the test window
         if (now().since(test_start) <= self.test_duration_ns) return null;
 
-        return TestResults{
+        return TestResultsScene{
             .average_wpm = wordsPerMinute(
                 self.correct_counter,
                 self.mistake_counter,
