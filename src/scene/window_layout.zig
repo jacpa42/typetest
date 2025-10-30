@@ -93,19 +93,13 @@ pub fn runningStatisticsWindows(
         },
     });
 
-    var idx: usize = 0;
     var x_off: u16 = 0;
-    while (x_off < top_section.width - widget_width) {
-        defer {
-            idx += 1;
-            x_off += widget_width;
-        }
-
-        std.debug.assert(idx < splits.len);
-
-        splits[idx] = top_section.child(.{
+    for (splits) |*split| {
+        split.* = top_section.child(.{
+            .x_off = x_off,
             .width = widget_width,
             .height = widget_height,
         });
+        x_off += widget_width;
     }
 }

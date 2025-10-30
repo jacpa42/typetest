@@ -2,7 +2,9 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const Line = @import("Line.zig");
 const stat = @import("scene/statistics.zig");
+const State = @import("State.zig");
 
+const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const now = @import("time.zig").now;
 const Words = @import("words.zig").Words;
 const Word = @import("words.zig").Word;
@@ -74,11 +76,8 @@ pub const TestResultsScene = struct {
         self: *const @This(),
         data: RenderData,
     ) void {
-        var win = data.win;
-        win.clear();
-
         const layout = @import("scene/window_layout.zig");
-        const game_window = layout.gameWindow(win);
+        const game_window = layout.gameWindow(data.root_window);
 
         // as we add more stats here we need to change how they are rendered
 
@@ -134,11 +133,8 @@ pub const MenuScene = struct {
 
     /// Clears screen and renders the current state
     pub fn render(self: *const @This(), data: RenderData) void {
-        var win = data.win;
-        win.clear();
-
         const layout = @import("scene/window_layout.zig");
-        const main_window = layout.gameWindow(win);
+        const main_window = layout.gameWindow(data.root_window);
         const list_items = layout.menuListItems(main_window);
 
         const SegmentWithOffset = struct { seg: vaxis.Segment, num_codepoints: u16 };
@@ -193,9 +189,11 @@ pub const MenuScene = struct {
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
-    win: vaxis.Window,
+    frame_number: u64,
+    root_window: vaxis.Window,
     words: *Words,
-    current_frame_time_ns: u64,
+    /// several recording of the frame time
+    frame_timings_ns: *const State.FrameTimings,
 };
 
 /// This is just a bunch of unicode codepoints seperated by spaces.
@@ -262,22 +260,53 @@ pub const TimeScene = struct {
         self: *const @This(),
         data: RenderData,
     ) void {
-        var win = data.win;
-        win.clear();
-
         const layout = @import("scene/window_layout.zig");
-        const game_window = layout.gameWindow(win);
+        const game_window = layout.gameWindow(data.root_window);
         const text_window = layout.textWindow(game_window);
 
         self.renderTextWindow(text_window);
 
-        var splits: [TimeGameStatistic.COUNT]vaxis.Window = undefined;
+        const fields = @typeInfo(TimeGameStatistic).@"union".fields;
+        var splits: [fields.len]vaxis.Window = undefined;
         layout.runningStatisticsWindows(game_window, &splits);
 
-        for (0.., splits) |idx, draw_window| {
-            const statistic: TimeGameStatistic = @enumFromInt(idx);
-            self.renderStatWindow(data, draw_window, statistic);
+        var statistic: TimeGameStatistic = undefined;
+
+        {
+            var wpm: f32 = 0.0;
+            if (self.test_start) |test_start| {
+                wpm = wordsPerMinute(
+                    self.correct_counter,
+                    self.mistake_counter,
+                    test_start,
+                );
+            }
+            statistic = .{ .wpm = wpm };
+            statistic.render(splits[0]);
         }
+        {
+            statistic = .{ .fps = framesPerSecond(data.frame_timings_ns) };
+            statistic.render(splits[1]);
+        }
+
+        {
+            statistic = .{ .mistake_counter = self.mistake_counter };
+            statistic.render(splits[2]);
+        }
+
+        {
+            var time_left_in_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) * 1e-9;
+            if (self.test_start) |test_start| {
+                time_left_in_seconds = @as(f32, @floatFromInt(now().since(test_start))) * 1e-9;
+            }
+            statistic = .{ .time_left_seconds = time_left_in_seconds };
+            statistic.render(splits[3]);
+        }
+
+        // inline for (fields, splits) |field, draw_window| {
+        //     const statistic: TimeGameStatistic = @enumFromInt(field.value);
+        //     self.renderStatWindow(data, draw_window, statistic);
+        // }
     }
 
     /// Clears screen and renders the current state.
@@ -374,72 +403,6 @@ pub const TimeScene = struct {
 
                 vertical_offset += 1;
             }
-        }
-    }
-
-    /// Clears screen and renders the current state.
-    pub fn renderStatWindow(
-        self: *const @This(),
-        data: RenderData,
-        text_box: vaxis.Window,
-        statistic: TimeGameStatistic,
-    ) void {
-        var buf: [128]u8 = undefined;
-        var segment: vaxis.Segment = .{ .text = "" };
-
-        defer {
-            const len = std.unicode.utf8CountCodepoints(segment.text) catch unreachable;
-            const col_offset = (text_box.width -| @as(u16, @truncate(len))) / 2;
-
-            _ = text_box.printSegment(segment, .{
-                .col_offset = col_offset,
-                .wrap = .none,
-            });
-        }
-
-        switch (statistic) {
-            .fps => {
-                const frames_per_second = 1e9 / @as(f32, @floatFromInt(data.current_frame_time_ns));
-                segment.text = std.fmt.bufPrint(
-                    &buf,
-                    "fps: {d}",
-                    .{frames_per_second},
-                ) catch unreachable;
-            },
-            .wpm => {
-                var words_per_minute: f32 = 0.0;
-                if (self.test_start) |start| {
-                    words_per_minute = wordsPerMinute(
-                        self.correct_counter,
-                        self.mistake_counter,
-                        start,
-                    );
-                }
-                segment.text = std.fmt.bufPrint(
-                    &buf,
-                    "wpm: {d:4.2}",
-                    .{words_per_minute},
-                ) catch unreachable;
-            },
-            .mistake_counter => {
-                segment.text = std.fmt.bufPrint(
-                    &buf,
-                    "mistakes: {}",
-                    .{self.mistake_counter},
-                ) catch unreachable;
-            },
-            .time_left => {
-                var time_left_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) / 1e9;
-                if (self.test_start) |start| {
-                    const elapsed = @as(f32, @floatFromInt(now().since(start))) / 1e9;
-                    time_left_seconds = @max(0.0, time_left_seconds - elapsed);
-                }
-                segment.text = std.fmt.bufPrint(
-                    &buf,
-                    "time left: {:.1}",
-                    .{time_left_seconds},
-                ) catch unreachable;
-            },
         }
     }
 
@@ -595,4 +558,18 @@ pub fn charactersPerSecond(
     const accuracy = @as(f32, @floatFromInt(correct)) / @max(total_chars, 1.0);
 
     return (total_chars * accuracy) / @max(elapsed, 1.0);
+}
+
+/// The number of characters per second the user is typeing
+pub fn framesPerSecond(frame_timings: *const State.FrameTimings) f32 {
+    var average: f32 = 0.0;
+    const count: f32 = comptime State.NUM_FRAME_TIMINGS;
+
+    if (State.NUM_FRAME_TIMINGS == 0) @compileError("retard");
+
+    inline for (frame_timings.items) |frame_time| {
+        average += 1e9 / @as(f32, @floatFromInt(frame_time));
+    }
+
+    return average / count;
 }

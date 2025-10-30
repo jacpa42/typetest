@@ -9,9 +9,15 @@ const action = @import("action.zig");
 const now = @import("time.zig").now;
 const parseArgs = cli_args.parseArgs;
 const Args = cli_args.Args;
+const RingBuffer = @import("ring_buffer.zig").RingBuffer;
+
+pub const NUM_FRAME_TIMINGS = 20;
+pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
 
 /// What frame of the game are we on
-frame_time_ns: u64 = 0,
+frame_counter: u64 = 0,
+/// The time taken to render a frame in ns
+frame_timings: FrameTimings = .fill(0),
 /// Current scene of the game
 current_scene: scene.Scene = .{ .menu_scene = .{} },
 
@@ -26,6 +32,8 @@ pub fn render(
     }
 }
 
+/// Runs each frame
+///
 /// Updates the internal data and then sleeps for the correct time to ensure that
 /// we try to match the fps
 pub fn tickFrame(
@@ -34,8 +42,12 @@ pub fn tickFrame(
     desired_fps: u64,
 ) void {
     const frame_delay_ns: u64 = @as(u64, 1e9) / desired_fps;
-    self.frame_time_ns = now().since(frame_start);
-    std.Thread.sleep(frame_delay_ns -| self.frame_time_ns);
+    const this_frame_time = now().since(frame_start);
+
+    self.frame_counter += 1;
+    self.frame_timings.append(this_frame_time);
+
+    defer std.Thread.sleep(frame_delay_ns -| this_frame_time);
 }
 
 pub fn processKeyPress(

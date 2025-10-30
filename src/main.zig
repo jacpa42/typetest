@@ -92,10 +92,12 @@ pub fn main() !void {
             .test_results_scene => {},
         }
 
+        win.clear();
         game_state.render(.{
-            .win = win,
+            .frame_number = game_state.frame_counter,
+            .root_window = win,
             .words = &args.words,
-            .current_frame_time_ns = game_state.frame_time_ns,
+            .frame_timings_ns = &game_state.frame_timings,
         });
         // Render the screen. Using a buffered writer will offer much better
         // performance, but is not required
