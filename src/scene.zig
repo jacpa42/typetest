@@ -3,7 +3,8 @@ const vaxis = @import("vaxis");
 const Line = @import("Line.zig");
 const stat = @import("scene/statistics.zig");
 const State = @import("State.zig");
-
+const character_style = @import("character_style.zig");
+const CharacterBuffer = @import("CharacterBuffer.zig");
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const now = @import("time.zig").now;
 const Words = @import("words.zig").Words;
@@ -12,8 +13,8 @@ const TimeGameStatistic = stat.TimeGameStatistic;
 
 /// This is the number of sentences which we try to render while the user is typing.
 pub const NUM_RENDER_LINES = 5;
-/// If the user types past this line then we generate more lines
-pub const MAX_CURRENT_LINE = 2;
+/// If the user types past this number of lines then we generate more lines
+pub const MAX_CURRENT_LINE = 3;
 
 pub const InGameAction = union(enum) {
     /// Returns to main menu
@@ -35,32 +36,6 @@ pub const MenuAction = union(enum) {
     quit,
     /// Start a time based game
     start_time_game,
-};
-
-const CharacterStyle = enum(u2) {
-    untyped,
-    cursor,
-    wrong,
-    right,
-
-    pub inline fn style(self: @This()) vaxis.Style {
-        return switch (self) {
-            .untyped => .{ .dim = true },
-            .right => .{
-                .fg = .{ .index = 10 },
-                .italic = true,
-            },
-            .wrong => .{
-                .bg = .{ .index = 1 },
-                .bold = true,
-            },
-            .cursor => .{
-                .italic = true,
-                .fg = .{ .index = 0 },
-                .bg = .{ .index = 15 },
-            },
-        };
-    }
 };
 
 pub const Scene = union(enum) {
@@ -218,21 +193,7 @@ pub const TimeScene = struct {
     /// How many right keys the user has pressed
     correct_counter: u32 = 0,
 
-    // todo: I want to scroll only when I reach MAX_CURRENT_LINE. I will need to
-    // rework the way in which the game is processed and rendered :(
-    //
-    /// A buffer which holds the sentences. Note that each line is allocated using the `alloc` field.
-    lines: [NUM_RENDER_LINES]Line,
-
-    /// A cache of all the characters which have been pressed thus far
-    render_characters: std.ArrayList(
-        struct {
-            /// The codepoint slice which was supposed to have been typed
-            true_codepoint_slice: []const u8,
-            /// A character style indicating the result of the keypress to the user
-            style: CharacterStyle,
-        },
-    ) = .empty,
+    character_buffer: CharacterBuffer,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -326,7 +287,7 @@ pub const TimeScene = struct {
             var line = self.lines[0];
             var col: u16 = @truncate((win.width -| line.num_codepoints) / 2);
 
-            for (self.render_characters.items) |typed_char| {
+            for (self.render_chars.items) |typed_char| {
                 const cell = vaxis.Cell{
                     .char = .{
                         .grapheme = typed_char.true_codepoint_slice,
@@ -345,7 +306,7 @@ pub const TimeScene = struct {
                         .grapheme = cursor_char,
                         .width = 1,
                     },
-                    .style = CharacterStyle.cursor.style(),
+                    .style = character_style.cursor,
                 };
                 win.writeCell(col, vertical_offset, cell);
                 col += 1;
@@ -358,7 +319,7 @@ pub const TimeScene = struct {
                         .grapheme = codepoint,
                         .width = 1,
                     },
-                    .style = CharacterStyle.untyped.style(),
+                    .style = character_style.untyped,
                 };
                 win.writeCell(col, vertical_offset, cell);
                 col += 1;
@@ -377,7 +338,7 @@ pub const TimeScene = struct {
                     const segments: [2]vaxis.Segment = .{
                         vaxis.Segment{
                             .text = word.buf,
-                            .style = CharacterStyle.untyped.style(),
+                            .style = character_style.untyped,
                         },
                         vaxis.Segment{ .text = " " },
                     };
@@ -397,7 +358,7 @@ pub const TimeScene = struct {
                 _ = win.printSegment(
                     vaxis.Segment{
                         .text = line.words.items[line.words.items.len - 1].buf,
-                        .style = CharacterStyle.untyped.style(),
+                        .style = character_style.untyped,
                     },
                     .{
                         .col_offset = col_offset,
@@ -419,7 +380,7 @@ pub const TimeScene = struct {
         codepoint_limit: usize,
         words: *Words,
     ) error{OutOfMemory}!void {
-        self.render_characters.clearRetainingCapacity();
+        self.render_chars.clearRetainingCapacity();
 
         inline for (&self.lines) |*line| {
             var alist = line.words;
@@ -437,7 +398,7 @@ pub const TimeScene = struct {
         self.* = .{
             .test_duration_ns = test_duration_ns,
             .lines = self.lines,
-            .render_characters = self.render_characters,
+            .render_chars = self.render_chars,
         };
     }
 
@@ -445,7 +406,7 @@ pub const TimeScene = struct {
         self: *@This(),
         alloc: std.mem.Allocator,
     ) void {
-        self.render_characters.deinit(alloc);
+        self.render_chars.deinit(alloc);
         inline for (&self.lines) |*line| {
             line.words.deinit(alloc);
         }
@@ -454,7 +415,7 @@ pub const TimeScene = struct {
     /// The `InGameAction.undo` action handler
     pub fn processUndo(self: *@This()) void {
         if (self.lines[0].prevCodepoint() != null) {
-            _ = self.render_characters.pop();
+            _ = self.render_chars.pop();
         }
     }
 
@@ -502,7 +463,7 @@ pub const TimeScene = struct {
 
             // Finally clear the typed words as we are on the newline :)
             {
-                self.render_characters.clearRetainingCapacity();
+                self.render_chars.clearRetainingCapacity();
             }
 
             true_codepoint_slice = self.lines[0].nextCodepoint() orelse unreachable;
@@ -510,16 +471,16 @@ pub const TimeScene = struct {
 
         true_codepoint = std.unicode.utf8Decode(true_codepoint_slice) catch unreachable;
 
-        var style: CharacterStyle = undefined;
+        var style: character_style = undefined;
         if (true_codepoint == codepoint) {
-            style = CharacterStyle.right;
+            style = character_style.right;
             self.correct_counter += 1;
         } else {
-            style = CharacterStyle.wrong;
+            style = character_style.wrong;
             self.mistake_counter += 1;
         }
 
-        try self.render_characters.append(alloc, .{
+        try self.render_chars.append(alloc, .{
             .style = style,
             .true_codepoint_slice = true_codepoint_slice,
         });
