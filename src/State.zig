@@ -57,12 +57,12 @@ pub fn processKeyPress(
     codepoint_limit: u16,
     args: *Args,
 ) error{OutOfMemory}!enum { continue_game, graceful_exit } {
-    const menuEvent = action.MenuAction.processKeydown;
-    const gameEvent = action.InGameAction.processKeydown;
-    const resultsEvent = action.ResultsAction.processKeydown;
+    const menuEventHandler = action.MenuAction.processKeydown;
+    const gameEventHandler = action.InGameAction.processKeydown;
+    const resultsEventHandler = action.ResultsAction.processKeydown;
 
     switch (self.current_scene) {
-        .menu_scene => |*menu| switch (menuEvent(key)) {
+        .menu_scene => |*menu| switch (menuEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .move_up => menu.moveSelectionUp(),
@@ -86,18 +86,32 @@ pub fn processKeyPress(
                 };
             },
         },
-        .test_results_scene => switch (resultsEvent(key)) {
+        .test_results_scene => switch (resultsEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => self.current_scene = .{ .menu_scene = .{} },
         },
-        .time_scene => |*timegame| switch (gameEvent(key)) {
+        .time_scene => |*timegame| switch (gameEventHandler(key)) {
             .none => return .continue_game,
-            .exit_game => {
+            .quit => return .graceful_exit,
+            .return_to_menu => {
                 timegame.deinit(alloc);
                 self.current_scene = .{ .menu_scene = .{} };
             },
             .new_random_game => {
+                args.seed = @bitCast(std.time.microTimestamp());
+                args.words.reseed(args.seed);
+
+                try timegame.newGame(
+                    alloc,
+                    timegame.test_duration_ns,
+                    codepoint_limit,
+                    &args.words,
+                );
+            },
+            .restart_current_game => {
+                args.words.reseed(args.seed);
+
                 try timegame.newGame(
                     alloc,
                     timegame.test_duration_ns,

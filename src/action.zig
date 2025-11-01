@@ -3,10 +3,14 @@ const vaxis = @import("vaxis");
 
 pub const InGameAction = union(enum) {
     none,
+    /// Exits the game entirely
+    quit,
     /// Returns to main menu
-    exit_game,
+    return_to_menu,
     /// Creates a new random game
     new_random_game,
+    /// Restarts the current game
+    restart_current_game,
     /// Undoes the latest key press (if any)
     undo_key_press,
     /// Does a key press with the provided code
@@ -15,9 +19,12 @@ pub const InGameAction = union(enum) {
     /// Process the event from vaxis and optionally emit an action to process
     pub fn processKeydown(key: vaxis.Key) @This() {
         const del = std.ascii.control_code.del;
+        const esc = std.ascii.control_code.esc;
         const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
 
-        if (key.matches('c', ctrl)) return .exit_game;
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches(esc, .{})) return .return_to_menu;
+        if (key.matches('r', ctrl)) return .restart_current_game;
         if (key.matches('n', ctrl)) return .new_random_game;
         if (key.matches(del, .{})) return .undo_key_press;
         if (key.text != null) return .{ .key_press = key.codepoint };

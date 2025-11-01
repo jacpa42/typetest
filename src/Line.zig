@@ -62,14 +62,27 @@ pub inline fn remainingWords(
 
 /// Returns the next codepoint. Returns `null` iff at the end of the buffer
 ///
+/// If our line contains these words: `['hi','bro']`
+///
+/// then our nextCodepoint would return
+///
+/// `'h', 'i', ' ', 'b', 'r', 'o', ' ', null`
+///
 /// does not move cursor_col or cursor_row
 pub fn nextCodepoint(self: *@This()) ?[]const u8 {
     if (self.iter.nextCodepointSlice()) |next| return next;
 
-    self.current_word += 1;
+    // If we have already called this function past the last word, then return null
     if (self.current_word >= self.words.items.len) return null;
 
-    self.iter = std.unicode.Utf8View.initUnchecked(self.words.items[self.current_word].buf).iterator();
+    self.current_word += 1;
+
+    // If we just reached the last word then return a space
+    if (self.current_word >= self.words.items.len) return " ";
+
+    self.iter = std.unicode.Utf8View.initUnchecked(
+        self.words.items[self.current_word].buf,
+    ).iterator();
 
     return " ";
 }

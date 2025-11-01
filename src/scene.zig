@@ -51,7 +51,7 @@ const CharacterStyle = enum(u2) {
                 .italic = true,
             },
             .wrong => .{
-                .fg = .{ .index = 9 },
+                .bg = .{ .index = 1 },
                 .bold = true,
             },
             .cursor => .{

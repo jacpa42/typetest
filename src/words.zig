@@ -3,6 +3,9 @@ const std = @import("std");
 const KIB = 1024;
 const MAX_WORD_SIZE = KIB / 2;
 
+/// default seed for WordRng
+const DEFAULT_SEED = 0;
+
 pub const WordsParseError =
     error{ OutOfMemory, InvalidUtf8 } ||
     std.fs.File.OpenError || std.Io.Reader.LimitedAllocError;
@@ -26,9 +29,17 @@ pub const Words = struct {
     words: []const Word,
 
     /// rng type used to generate new words
-    rng: WordRng = .{ .sequential = 0 },
+    rng: WordRng = .{ .random = .init(DEFAULT_SEED) },
 
     pub fn reseed(self: *@This(), seed: u64) void {
+        switch (self.rng) {
+            .sequential => |*idx| idx.* = seed,
+            .random => |*rng| rng.seed(seed),
+        }
+    }
+
+    /// Gets the current seed from the rng
+    pub fn getSeed(self: *@This(), seed: u64) void {
         switch (self.rng) {
             .sequential => |*idx| idx.* = seed,
             .random => |*rng| rng.seed(seed),
