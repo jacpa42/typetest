@@ -50,7 +50,6 @@ pub fn main() !void {
 
     var win = vx.window();
     var render_width = (win.width * 3) / 5;
-    var render_height = @min(scene.NUM_RENDER_LINES, win.height);
 
     game_loop: while (true) {
         const frame_start = now();
@@ -62,7 +61,6 @@ pub fn main() !void {
                     try vx.resize(alloc, tty.writer(), ws);
                     win = vx.window();
                     render_width = (win.width * 3) / 5;
-                    render_height = @min(scene.NUM_RENDER_LINES, win.height);
                 },
 
                 .key_press => |key| {

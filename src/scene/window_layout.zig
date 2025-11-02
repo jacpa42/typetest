@@ -2,6 +2,8 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const scene = @import("../scene.zig");
 
+const CharacterBuffer = @import("../CharacterBuffer.zig");
+
 /// The child window where our entire game goes
 pub fn gameWindow(win: vaxis.Window) vaxis.Window {
     const game_window_height = win.height * 2 / 3;
@@ -34,7 +36,7 @@ pub fn menuListItems(game_window: vaxis.Window) vaxis.Window {
 ///
 /// Middle chunk of the screen
 pub fn resultsWindow(game_window: vaxis.Window) vaxis.Window {
-    const height = scene.NUM_RENDER_LINES + 2;
+    const height = CharacterBuffer.NUM_RENDER_LINES + 2;
 
     return game_window.child(.{
         .x_off = 0,
@@ -52,8 +54,8 @@ pub fn resultsWindow(game_window: vaxis.Window) vaxis.Window {
 /// The child window where our text box input goes.
 ///
 /// The bottom chunk of the window.
-pub fn textWindow(game_window: vaxis.Window) vaxis.Window {
-    const height = scene.NUM_RENDER_LINES + 2;
+pub fn charBufWindow(game_window: vaxis.Window) vaxis.Window {
+    const height = CharacterBuffer.NUM_RENDER_LINES + 2;
 
     return game_window.child(.{
         .x_off = 0,

@@ -56,7 +56,7 @@ pub fn processKeyPress(
     key: vaxis.Key,
     codepoint_limit: u16,
     args: *Args,
-) error{OutOfMemory}!enum { continue_game, graceful_exit } {
+) error{ OutOfMemory, NoWords }!enum { continue_game, graceful_exit } {
     const menuEventHandler = action.MenuAction.processKeydown;
     const gameEventHandler = action.InGameAction.processKeydown;
     const resultsEventHandler = action.ResultsAction.processKeydown;
@@ -91,37 +91,37 @@ pub fn processKeyPress(
             .quit => return .graceful_exit,
             .return_to_menu => self.current_scene = .{ .menu_scene = .{} },
         },
-        .time_scene => |*timegame| switch (gameEventHandler(key)) {
+        .time_scene => |*time_scene| switch (gameEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
-                timegame.deinit(alloc);
+                time_scene.deinit(alloc);
                 self.current_scene = .{ .menu_scene = .{} };
             },
             .new_random_game => {
                 args.seed = @bitCast(std.time.microTimestamp());
                 args.words.reseed(args.seed);
 
-                try timegame.newGame(
+                try time_scene.reinit(
                     alloc,
-                    timegame.test_duration_ns,
-                    codepoint_limit,
                     &args.words,
+                    codepoint_limit,
+                    time_scene.test_duration_ns,
                 );
             },
             .restart_current_game => {
                 args.words.reseed(args.seed);
 
-                try timegame.newGame(
+                try time_scene.reinit(
                     alloc,
-                    timegame.test_duration_ns,
-                    codepoint_limit,
                     &args.words,
+                    codepoint_limit,
+                    time_scene.test_duration_ns,
                 );
             },
-            .undo_key_press => timegame.processUndo(),
+            .undo_key_press => time_scene.processUndo(),
             .key_press => |codepoint| {
-                try timegame.processKeyPress(
+                try time_scene.processKeyPress(
                     alloc,
                     &args.words,
                     codepoint_limit,

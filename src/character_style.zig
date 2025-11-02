@@ -21,3 +21,15 @@ pub const cursor = vaxis.Style{
     .fg = .{ .index = 0 },
     .bg = .{ .index = 15 },
 };
+
+/// The style for rendering the "fps: " or "wpm: " etc
+pub const statistic_label = vaxis.Style{
+    .italic = true,
+    .fg = .{ .index = 4 },
+};
+
+/// The style for rendering the actual fps value
+pub const fps = vaxis.Style{
+    .italic = true,
+    .fg = .{ .index = 4 },
+};

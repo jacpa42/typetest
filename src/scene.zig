@@ -9,12 +9,8 @@ const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const now = @import("time.zig").now;
 const Words = @import("words.zig").Words;
 const Word = @import("words.zig").Word;
-const TimeGameStatistic = stat.TimeGameStatistic;
 
-/// This is the number of sentences which we try to render while the user is typing.
-pub const NUM_RENDER_LINES = 5;
-/// If the user types past this number of lines then we generate more lines
-pub const MAX_CURRENT_LINE = 3;
+pub const KeyPressOutcome = enum { right, wrong };
 
 pub const InGameAction = union(enum) {
     /// Returns to main menu
@@ -186,39 +182,46 @@ pub const TimeScene = struct {
     test_start: ?std.time.Instant = null,
 
     /// The time from when the test starts to the end of the test in nanoseconds
-    test_duration_ns: u64,
+    test_duration_ns: u64 = 0,
 
     /// How many wrong keys the user has pressed
     mistake_counter: u32 = 0,
     /// How many right keys the user has pressed
     correct_counter: u32 = 0,
 
+    /// A scrollable character buffer.
     character_buffer: CharacterBuffer,
 
+    /// Contructs a new game
     pub fn init(
         alloc: std.mem.Allocator,
         words: *Words,
-        codepoint_limit: usize,
+        codepoint_limit: u16,
         test_duration_ns: u64,
-    ) error{OutOfMemory}!@This() {
-        var lines: [NUM_RENDER_LINES]Line = undefined;
-
-        inline for (0..NUM_RENDER_LINES) |idx| {
-            var alist = std.ArrayList(Word).empty;
-
-            try words.fillRandomLine(
-                alloc,
-                &alist,
-                codepoint_limit,
-            );
-
-            lines[idx] = Line.initUnchecked(alist);
-        }
-
+    ) error{ OutOfMemory, NoWords }!@This() {
         return TimeScene{
             .test_duration_ns = test_duration_ns,
-            .lines = lines,
+            .character_buffer = try CharacterBuffer.init(
+                alloc,
+                words,
+                codepoint_limit,
+            ),
         };
+    }
+
+    /// Initializes the game with some new lines reusing the allocated memory
+    pub fn reinit(
+        self: *@This(),
+        alloc: std.mem.Allocator,
+        words: *Words,
+        codepoint_limit: u16,
+        test_duration_ns: u64,
+    ) error{OutOfMemory}!void {
+        try self.character_buffer.reinit(alloc, words, codepoint_limit);
+        self.mistake_counter = 0;
+        self.correct_counter = 0;
+        self.test_duration_ns = test_duration_ns;
+        self.test_start = null;
     }
 
     /// Clears screen and renders the current state.
@@ -228,195 +231,36 @@ pub const TimeScene = struct {
     ) void {
         const layout = @import("scene/window_layout.zig");
         const game_window = layout.gameWindow(data.root_window);
-        const text_window = layout.textWindow(game_window);
 
-        self.renderTextWindow(text_window);
+        self.character_buffer.render(layout.charBufWindow(game_window));
 
-        const fields = @typeInfo(TimeGameStatistic).@"union".fields;
-        var splits: [fields.len]vaxis.Window = undefined;
+        var splits: [2]vaxis.Window = undefined;
         layout.runningStatisticsWindows(game_window, &splits);
-
-        var statistic: TimeGameStatistic = undefined;
 
         {
             var wpm: f32 = 0.0;
             if (self.test_start) |test_start| {
-                wpm = wordsPerMinute(
-                    self.correct_counter,
-                    self.mistake_counter,
-                    test_start,
-                );
+                wpm = wordsPerMinute(self.correct_counter, self.mistake_counter, test_start);
             }
-            statistic = .{ .wpm = wpm };
-            statistic.render(splits[0]);
+
+            stat.renderStatistic("wpm: ", @as(u16, @intFromFloat(wpm)), splits[0]);
         }
         {
-            statistic = .{ .fps = framesPerSecond(data.frame_timings_ns) };
-            statistic.render(splits[1]);
+            const fps: f32 = framesPerSecond(data.frame_timings_ns);
+            stat.renderStatistic("fps: ", @as(u16, @intFromFloat(fps)), splits[1]);
         }
-
-        {
-            statistic = .{ .mistake_counter = self.mistake_counter };
-            statistic.render(splits[2]);
-        }
-
-        {
-            var time_left_in_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) * 1e-9;
-            if (self.test_start) |test_start| {
-                time_left_in_seconds = @as(f32, @floatFromInt(now().since(test_start))) * 1e-9;
-            }
-            statistic = .{ .time_left_seconds = time_left_in_seconds };
-            statistic.render(splits[3]);
-        }
-
-        // inline for (fields, splits) |field, draw_window| {
-        //     const statistic: TimeGameStatistic = @enumFromInt(field.value);
-        //     self.renderStatWindow(data, draw_window, statistic);
-        // }
-    }
-
-    /// Clears screen and renders the current state.
-    pub fn renderTextWindow(
-        self: *const @This(),
-        win: vaxis.Window,
-    ) void {
-        var vertical_offset = (win.height -| NUM_RENDER_LINES) / 2;
-
-        // Render the stuff the user has typed thus far
-        {
-            var line = self.lines[0];
-            var col: u16 = @truncate((win.width -| line.num_codepoints) / 2);
-
-            for (self.render_chars.items) |typed_char| {
-                const cell = vaxis.Cell{
-                    .char = .{
-                        .grapheme = typed_char.true_codepoint_slice,
-                        .width = 1,
-                    },
-                    .style = typed_char.style.style(),
-                };
-                win.writeCell(col, vertical_offset, cell);
-                col += 1;
-            }
-
-            // render the next char with the cursor style
-            if (line.nextCodepoint()) |cursor_char| {
-                const cell = vaxis.Cell{
-                    .char = .{
-                        .grapheme = cursor_char,
-                        .width = 1,
-                    },
-                    .style = character_style.cursor,
-                };
-                win.writeCell(col, vertical_offset, cell);
-                col += 1;
-            }
-
-            // render the rest of the line
-            while (line.nextCodepoint()) |codepoint| {
-                const cell = vaxis.Cell{
-                    .char = .{
-                        .grapheme = codepoint,
-                        .width = 1,
-                    },
-                    .style = character_style.untyped,
-                };
-                win.writeCell(col, vertical_offset, cell);
-                col += 1;
-            }
-        }
-
-        // Render inactive lines
-        {
-            vertical_offset += 1;
-            for (self.lines[1..]) |line| {
-                if (line.words.items.len == 0) continue;
-
-                var col_offset: u16 = @truncate((win.width -| line.num_codepoints) / 2);
-
-                for (line.words.items[0 .. line.words.items.len - 1]) |word| {
-                    const segments: [2]vaxis.Segment = .{
-                        vaxis.Segment{
-                            .text = word.buf,
-                            .style = character_style.untyped,
-                        },
-                        vaxis.Segment{ .text = " " },
-                    };
-
-                    const print_opts = vaxis.PrintOptions{
-                        .col_offset = col_offset,
-                        .row_offset = vertical_offset,
-                        .wrap = .none,
-                    };
-
-                    _ = win.print(&segments, print_opts);
-
-                    col_offset += @truncate(word.num_codepoints + 1);
-                }
-
-                // print the final inactive word
-                _ = win.printSegment(
-                    vaxis.Segment{
-                        .text = line.words.items[line.words.items.len - 1].buf,
-                        .style = character_style.untyped,
-                    },
-                    .{
-                        .col_offset = col_offset,
-                        .row_offset = vertical_offset,
-                        .wrap = .none,
-                    },
-                );
-
-                vertical_offset += 1;
-            }
-        }
-    }
-
-    /// Resets the current game with the words
-    pub fn newGame(
-        self: *@This(),
-        alloc: std.mem.Allocator,
-        test_duration_ns: u64,
-        codepoint_limit: usize,
-        words: *Words,
-    ) error{OutOfMemory}!void {
-        self.render_chars.clearRetainingCapacity();
-
-        inline for (&self.lines) |*line| {
-            var alist = line.words;
-            alist.clearRetainingCapacity();
-
-            try words.fillRandomLine(
-                alloc,
-                &alist,
-                codepoint_limit,
-            );
-            line.* = .initUnchecked(alist);
-        }
-
-        // reset all variables expect keep the new lines
-        self.* = .{
-            .test_duration_ns = test_duration_ns,
-            .lines = self.lines,
-            .render_chars = self.render_chars,
-        };
     }
 
     pub fn deinit(
         self: *@This(),
         alloc: std.mem.Allocator,
     ) void {
-        self.render_chars.deinit(alloc);
-        inline for (&self.lines) |*line| {
-            line.words.deinit(alloc);
-        }
+        self.character_buffer.deinit(alloc);
     }
 
     /// The `InGameAction.undo` action handler
     pub fn processUndo(self: *@This()) void {
-        if (self.lines[0].prevCodepoint() != null) {
-            _ = self.render_chars.pop();
-        }
+        self.character_buffer.processUndo();
     }
 
     /// The `InGameAction.key_press` action handler.
@@ -429,61 +273,22 @@ pub const TimeScene = struct {
         self: *@This(),
         alloc: std.mem.Allocator,
         words: *Words,
-        codepoint_limit: usize,
-        codepoint: u21,
-    ) error{OutOfMemory}!void {
-        var true_codepoint_slice: []const u8 = undefined;
-        var true_codepoint: u21 = undefined;
+        codepoint_limit: u16,
+        typed_codepoint: u21,
+    ) error{ OutOfMemory, NoWords }!void {
+        const outcome = try self.character_buffer.processKeyPress(
+            alloc,
+            words,
+            codepoint_limit,
+            typed_codepoint,
+        );
 
         if (self.test_start == null) self.test_start = now();
 
-        if (self.lines[0].nextCodepoint()) |next_codepoint_slice| {
-            true_codepoint_slice = next_codepoint_slice;
-        } else {
-            // Save this arraylist for later
-            var reused_words_arraylist = self.lines[0].words;
-
-            // Overwrite the first part of the buffer with the new lines
-            {
-                @memmove(
-                    self.lines[0 .. NUM_RENDER_LINES - 1],
-                    self.lines[1..NUM_RENDER_LINES],
-                );
-            }
-
-            // Generate the new line and put it at the back of the `lines` buffer
-            {
-                try words.fillRandomLine(
-                    alloc,
-                    &reused_words_arraylist,
-                    codepoint_limit,
-                );
-                self.lines[NUM_RENDER_LINES - 1] = Line.initUnchecked(reused_words_arraylist);
-            }
-
-            // Finally clear the typed words as we are on the newline :)
-            {
-                self.render_chars.clearRetainingCapacity();
-            }
-
-            true_codepoint_slice = self.lines[0].nextCodepoint() orelse unreachable;
+        switch (outcome) {
+            .right => self.correct_counter += 1,
+            .wrong => self.mistake_counter += 1,
         }
-
-        true_codepoint = std.unicode.utf8Decode(true_codepoint_slice) catch unreachable;
-
-        var style: character_style = undefined;
-        if (true_codepoint == codepoint) {
-            style = character_style.right;
-            self.correct_counter += 1;
-        } else {
-            style = character_style.wrong;
-            self.mistake_counter += 1;
-        }
-
-        try self.render_chars.append(alloc, .{
-            .style = style,
-            .true_codepoint_slice = true_codepoint_slice,
-        });
     }
 
     pub fn isComplete(self: *const @This()) ?TestResultsScene {

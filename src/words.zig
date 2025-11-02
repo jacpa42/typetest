@@ -15,7 +15,7 @@ pub const Word = struct {
     /// The characters of the word. Memory is allocated elsewhere.
     buf: []const u8,
     /// The number of utf8 codepoints in the grapheme
-    num_codepoints: usize,
+    num_codepoints: u16,
 };
 
 /// A bunch of `Word` structs in an array with a nifty way to generate random words.
@@ -54,25 +54,27 @@ pub const Words = struct {
     /// Clears the array list and fills it with words until the codepoint_limit would be exceeded by adding more words (and spaces).
     ///
     /// The allocator is in case we need to resize the array.
+    ///
+    /// returns: the number of codepoints which this line has ___including spaces___
     pub fn fillRandomLine(
         self: *@This(),
         alloc: std.mem.Allocator,
         array_list: *std.ArrayList(Word),
-        codepoint_limit: usize,
-    ) error{OutOfMemory}!void {
+        codepoint_limit: u16,
+    ) error{OutOfMemory}!u16 {
         array_list.clearRetainingCapacity();
-        var remaining_codepoints = codepoint_limit;
 
         var next_word = self.randomWord();
-        var num_spaces: usize = 0;
-        while (remaining_codepoints >= next_word.num_codepoints + num_spaces) {
-            num_spaces = array_list.items.len;
+        var total_codepoints: u16 = 0;
 
+        while (total_codepoints + next_word.num_codepoints < codepoint_limit) {
             try array_list.append(alloc, next_word);
 
-            remaining_codepoints -= next_word.num_codepoints;
+            total_codepoints += next_word.num_codepoints + 1; // plus 1 for space
             next_word = self.randomWord();
         }
+
+        return total_codepoints;
     }
 
     pub fn deinit(self: *@This(), gpa: std.mem.Allocator) void {
@@ -90,7 +92,7 @@ pub const Words = struct {
         errdefer words.deinit(gpa);
 
         var utf8_iter = (try std.unicode.Utf8View.init(word_buf)).iterator();
-        var grapheme_size: usize = 0;
+        var grapheme_size: u16 = 0;
         var byte_index: usize = 0;
         var word_start: usize = 0;
         while (utf8_iter.nextCodepointSlice()) |codepoint_slice| {
