@@ -1,7 +1,6 @@
 const std = @import("std");
 
-const KIB = 1024;
-const MAX_WORD_SIZE = KIB / 2;
+pub const MAX_WORD_SIZE = 64;
 
 /// default seed for WordRng
 const DEFAULT_SEED = 0;

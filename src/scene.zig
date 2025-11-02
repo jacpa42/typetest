@@ -48,9 +48,9 @@ pub const TestResultsScene = struct {
     pub fn render(
         self: *const @This(),
         data: RenderData,
-    ) void {
+    ) error{WindowTooSmall}!void {
         const layout = @import("scene/window_layout.zig");
-        const game_window = layout.gameWindow(data.root_window);
+        const game_window = try layout.gameWindow(data.root_window);
 
         // as we add more stats here we need to change how they are rendered
 
@@ -105,9 +105,12 @@ pub const MenuScene = struct {
     selection: MenuItem = @enumFromInt(0),
 
     /// Clears screen and renders the current state
-    pub fn render(self: *const @This(), data: RenderData) void {
+    pub fn render(
+        self: *const @This(),
+        data: RenderData,
+    ) error{WindowTooSmall}!void {
         const layout = @import("scene/window_layout.zig");
-        const main_window = layout.gameWindow(data.root_window);
+        const main_window = try layout.gameWindow(data.root_window);
         const list_items = layout.menuListItems(main_window);
 
         const SegmentWithOffset = struct { seg: vaxis.Segment, num_codepoints: u16 };
@@ -198,7 +201,7 @@ pub const TimeScene = struct {
         words: *Words,
         codepoint_limit: u16,
         test_duration_ns: u64,
-    ) error{ OutOfMemory, NoWords }!@This() {
+    ) error{ OutOfMemory, EmptyLineNotAllowed }!@This() {
         return TimeScene{
             .test_duration_ns = test_duration_ns,
             .character_buffer = try CharacterBuffer.init(
@@ -216,7 +219,7 @@ pub const TimeScene = struct {
         words: *Words,
         codepoint_limit: u16,
         test_duration_ns: u64,
-    ) error{OutOfMemory}!void {
+    ) error{ OutOfMemory, EmptyLineNotAllowed }!void {
         try self.character_buffer.reinit(alloc, words, codepoint_limit);
         self.mistake_counter = 0;
         self.correct_counter = 0;
@@ -228,27 +231,27 @@ pub const TimeScene = struct {
     pub fn render(
         self: *const @This(),
         data: RenderData,
-    ) void {
+    ) error{WindowTooSmall}!void {
         const layout = @import("scene/window_layout.zig");
-        const game_window = layout.gameWindow(data.root_window);
+        const game_window = try layout.gameWindow(data.root_window);
 
         self.character_buffer.render(layout.charBufWindow(game_window));
 
-        var splits: [2]vaxis.Window = undefined;
-        layout.runningStatisticsWindows(game_window, &splits);
-
-        {
-            var wpm: f32 = 0.0;
-            if (self.test_start) |test_start| {
-                wpm = wordsPerMinute(self.correct_counter, self.mistake_counter, test_start);
-            }
-
-            stat.renderStatistic("wpm: ", @as(u16, @intFromFloat(wpm)), splits[0]);
-        }
-        {
-            const fps: f32 = framesPerSecond(data.frame_timings_ns);
-            stat.renderStatistic("fps: ", @as(u16, @intFromFloat(fps)), splits[1]);
-        }
+        const fps = framesPerSecond(data.frame_timings_ns);
+        const wpm: f32 = wordsPerMinute(
+            self.correct_counter,
+            self.mistake_counter,
+            self.test_start,
+        );
+        const time_left = @as(f32, @floatFromInt(self.timeLeftNanoSeconds())) / 1e9;
+        stat.renderStatistics(
+            &.{
+                .{ .value = time_left, .label = "time: " },
+                .{ .value = fps, .label = "fps: " },
+                .{ .value = wpm, .label = "wpm: " },
+            },
+            layout.runningStatisticsWindow(game_window),
+        );
     }
 
     pub fn deinit(
@@ -275,7 +278,7 @@ pub const TimeScene = struct {
         words: *Words,
         codepoint_limit: u16,
         typed_codepoint: u21,
-    ) error{ OutOfMemory, NoWords }!void {
+    ) error{ OutOfMemory, EmptyLineNotAllowed }!void {
         const outcome = try self.character_buffer.processKeyPress(
             alloc,
             words,
@@ -305,14 +308,20 @@ pub const TimeScene = struct {
             ),
         };
     }
+
+    pub fn timeLeftNanoSeconds(self: *const @This()) u64 {
+        const test_start = self.test_start orelse return self.test_duration_ns;
+        return self.test_duration_ns -| now().since(test_start);
+    }
 };
 
 pub fn wordsPerMinute(
     correct: u32,
     mistakes: u32,
-    test_start: std.time.Instant,
+    test_start: ?std.time.Instant,
 ) f32 {
-    return charactersPerSecond(correct, mistakes, test_start) * 60.0 / 5.0;
+    const start = test_start orelse return 0.0;
+    return charactersPerSecond(correct, mistakes, start) * 60.0 / 5.0;
 }
 
 /// The number of characters per second the user is typeing

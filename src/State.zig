@@ -24,11 +24,11 @@ current_scene: scene.Scene = .{ .menu_scene = .{} },
 pub fn render(
     self: *const @This(),
     data: scene.RenderData,
-) void {
+) error{WindowTooSmall}!void {
     switch (self.current_scene) {
-        .menu_scene => |menu_scene| menu_scene.render(data),
-        .time_scene => |*time_scene| time_scene.render(data),
-        .test_results_scene => |*test_results| test_results.render(data),
+        .menu_scene => |menu_scene| try menu_scene.render(data),
+        .time_scene => |*time_scene| try time_scene.render(data),
+        .test_results_scene => |*test_results| try test_results.render(data),
     }
 }
 
@@ -56,7 +56,7 @@ pub fn processKeyPress(
     key: vaxis.Key,
     codepoint_limit: u16,
     args: *Args,
-) error{ OutOfMemory, NoWords }!enum { continue_game, graceful_exit } {
+) error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit } {
     const menuEventHandler = action.MenuAction.processKeydown;
     const gameEventHandler = action.InGameAction.processKeydown;
     const resultsEventHandler = action.ResultsAction.processKeydown;

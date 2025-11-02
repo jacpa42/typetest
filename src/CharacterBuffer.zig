@@ -46,7 +46,7 @@ pub fn init(
     alloc: std.mem.Allocator,
     words: *Words,
     codepoint_limit: u16,
-) error{ OutOfMemory, NoWords }!CharacterBuffer {
+) error{ OutOfMemory, EmptyLineNotAllowed }!CharacterBuffer {
     var lines: [NUM_RENDER_LINES]Line = undefined;
 
     inline for (&lines) |*line| {
@@ -72,12 +72,18 @@ pub fn reinit(
     alloc: std.mem.Allocator,
     words: *Words,
     codepoint_limit: u16,
-) error{OutOfMemory}!void {
+) error{ OutOfMemory, EmptyLineNotAllowed }!void {
     inline for (&self.lines) |*line| {
-        line.total_codepoints = try words.fillRandomLine(
+        var reused_array_list = line.words;
+        const total_codepoints_with_spaces = try words.fillRandomLine(
             alloc,
-            &line.words,
+            &reused_array_list,
             codepoint_limit,
+        );
+
+        line.* = try .init(
+            reused_array_list,
+            total_codepoints_with_spaces,
         );
     }
 
@@ -205,12 +211,14 @@ pub fn processKeyPress(
     words: *Words,
     codepoint_limit: u16,
     typed_codepoint: u21,
-) error{ OutOfMemory, NoWords }!KeyPressOutcome {
-    const true_codepoint_slice: []const u8 = try self.nextCodePointSlice(alloc, words, codepoint_limit);
+) error{ OutOfMemory, EmptyLineNotAllowed }!KeyPressOutcome {
+    var true_codepoint_slice: []const u8 = try self.nextCodePointSlice(alloc, words, codepoint_limit);
     const true_codepoint: u21 = std.unicode.utf8Decode(true_codepoint_slice) catch unreachable;
 
     var style: vaxis.Style = undefined;
     var ret: KeyPressOutcome = undefined;
+
+    // I use a block here just to make the rendering nicer
 
     if (true_codepoint == typed_codepoint) {
         style = character_style.right;
@@ -218,6 +226,12 @@ pub fn processKeyPress(
     } else {
         style = character_style.wrong;
         ret = .wrong;
+
+        // This fixes some jank in the rendering that i dont like
+        if (true_codepoint == ' ') {
+            style = comptime character_style.invert_fg_bg(character_style.wrong);
+            true_codepoint_slice = "█";
+        }
     }
 
     try self.getCurrentCharacterBuf().append(alloc, .{
@@ -266,7 +280,7 @@ fn nextCodePointSlice(
     alloc: std.mem.Allocator,
     words: *Words,
     codepoint_limit: u16,
-) error{ OutOfMemory, NoWords }![]const u8 {
+) error{ OutOfMemory, EmptyLineNotAllowed }![]const u8 {
     // If we have characters left to type on this line, then compare against that
     if (self.getCurrentLine().next()) |next_codepoint_slice| {
         return next_codepoint_slice;
@@ -322,7 +336,7 @@ fn scrollDownLine(
     alloc: std.mem.Allocator,
     words: *Words,
     codepoint_limit: u16,
-) error{ OutOfMemory, NoWords }!void {
+) error{ OutOfMemory, EmptyLineNotAllowed }!void {
     try self.rotateLinesBuf(alloc, words, codepoint_limit);
     self.rotateRenderCharBuf();
 }
@@ -333,7 +347,7 @@ fn rotateLinesBuf(
     alloc: std.mem.Allocator,
     words: *Words,
     codepoint_limit: u16,
-) error{ OutOfMemory, NoWords }!void {
+) error{ OutOfMemory, EmptyLineNotAllowed }!void {
     // Generate a new line into the first arraylist
     var reused_words_arraylist = self.lines[0].words;
 

@@ -22,9 +22,9 @@ iter: std.unicode.Utf8Iterator,
 pub fn init(
     word_array_list: std.ArrayList(u8),
     total_codepoints_with_spaces: u16,
-) error{NoWords}!Line {
+) error{EmptyLineNotAllowed}!Line {
     if (word_array_list.items.len == 0) {
-        return error.NoWords;
+        return error.EmptyLineNotAllowed;
     }
 
     std.debug.assert(std.unicode.utf8ValidateSlice(word_array_list.items));

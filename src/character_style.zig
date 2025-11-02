@@ -15,6 +15,16 @@ pub const wrong = vaxis.Style{
     .bold = true,
 };
 
+/// Swaps the fg and bg styles
+pub fn invert_fg_bg(style: vaxis.Style) vaxis.Style {
+    var new_style = style;
+
+    new_style.fg = style.bg;
+    new_style.bg = style.fg;
+
+    return new_style;
+}
+
 /// The style for the cursor
 pub const cursor = vaxis.Style{
     .italic = true,
@@ -31,5 +41,13 @@ pub const statistic_label = vaxis.Style{
 /// The style for rendering the actual fps value
 pub const fps = vaxis.Style{
     .italic = true,
+    .fg = .{ .index = 1 },
+};
+
+pub const game_window_border = vaxis.Style{
+    .fg = .{ .index = 1 },
+};
+
+pub const text_box_window_border = vaxis.Style{
     .fg = .{ .index = 4 },
 };

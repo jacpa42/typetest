@@ -16,15 +16,9 @@ const Event = union(enum) {
     winsize: vaxis.Winsize,
 };
 
-const MAX_MEMORY = 5 * 1024 * 1024;
-
 pub fn main() !void {
     // Lets try to reuse a 1 MIB buffer for all our memory needs :)
-    const mem: []u8 = try std.heap.page_allocator.alloc(u8, MAX_MEMORY);
-    defer std.heap.page_allocator.free(mem);
-
-    var gpa = std.heap.FixedBufferAllocator.init(mem);
-    const alloc = gpa.allocator();
+    const alloc = std.heap.page_allocator;
 
     var args = try parseArgs(alloc);
     defer args.deinit(alloc);
@@ -91,7 +85,7 @@ pub fn main() !void {
         }
 
         win.clear();
-        game_state.render(.{
+        try game_state.render(.{
             .frame_number = game_state.frame_counter,
             .root_window = win,
             .words = &args.words,
