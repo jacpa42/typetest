@@ -47,11 +47,12 @@ pub const MenuAction = enum {
     /// Process the event from vaxis and optionally emit an action to process
     pub fn processKeydown(key: vaxis.Key) @This() {
         const ret = std.ascii.control_code.cr;
+        const esc = std.ascii.control_code.esc;
         const up = vaxis.Key.up;
         const down = vaxis.Key.down;
         const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
 
-        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches('c', ctrl) or key.matches(esc, .{})) return .quit;
         if (key.matches(ret, .{})) return .select;
 
         if (key.matchesAny(&.{ 'k', up }, .{})) return .move_up;

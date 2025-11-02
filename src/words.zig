@@ -59,7 +59,7 @@ pub const Words = struct {
     pub fn fillRandomLine(
         self: *@This(),
         alloc: std.mem.Allocator,
-        array_list: *std.ArrayList(Word),
+        array_list: *std.ArrayList(u8),
         codepoint_limit: u16,
     ) error{OutOfMemory}!u16 {
         array_list.clearRetainingCapacity();
@@ -68,7 +68,8 @@ pub const Words = struct {
         var total_codepoints: u16 = 0;
 
         while (total_codepoints + next_word.num_codepoints < codepoint_limit) {
-            try array_list.append(alloc, next_word);
+            try array_list.appendSlice(alloc, next_word.buf);
+            try array_list.append(alloc, ' ');
 
             total_codepoints += next_word.num_codepoints + 1; // plus 1 for space
             next_word = self.randomWord();

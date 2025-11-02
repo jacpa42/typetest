@@ -50,7 +50,7 @@ pub fn init(
     var lines: [NUM_RENDER_LINES]Line = undefined;
 
     inline for (&lines) |*line| {
-        var word_array_list = std.ArrayList(Word).empty;
+        var word_array_list = std.ArrayList(u8).empty;
 
         const total_codepoints_with_spaces = try words.fillRandomLine(
             alloc,
@@ -74,7 +74,7 @@ pub fn reinit(
     codepoint_limit: u16,
 ) error{OutOfMemory}!void {
     inline for (&self.lines) |*line| {
-        _ = try words.fillRandomLine(
+        line.total_codepoints = try words.fillRandomLine(
             alloc,
             &line.words,
             codepoint_limit,
@@ -141,7 +141,7 @@ pub fn render(
 
         cursor_col = col;
 
-        while (current_line_copy.nextCodepoint()) |codepoint| : (col += 1) {
+        while (current_line_copy.next()) |codepoint| : (col += 1) {
             win.writeCell(col, row, .{
                 .char = .{ .grapheme = codepoint },
                 .style = character_style.untyped,
@@ -157,7 +157,7 @@ pub fn render(
         var col =
             (win.width -| untyped_line_copy.total_codepoints) / 2;
 
-        while (untyped_line_copy.nextCodepoint()) |codepoint| : (col += 1) {
+        while (untyped_line_copy.next()) |codepoint| : (col += 1) {
             win.writeCell(col, row, .{
                 .char = .{ .grapheme = codepoint },
                 .style = character_style.untyped,
@@ -172,7 +172,7 @@ pub fn render(
         var cursor_row = self.current_line;
         var cursor_codepoint: []const u8 = undefined;
 
-        if (self.getCurrentLineConst().peekNextCodepoint()) |codepoint| {
+        if (self.getCurrentLineConst().peekNext()) |codepoint| {
             cursor_codepoint = codepoint;
         }
 
@@ -184,7 +184,7 @@ pub fn render(
             const next_row = &self.lines[cursor_row];
 
             cursor_col = (win.width -| next_row.total_codepoints) / 2;
-            cursor_codepoint = next_row.peekNextCodepoint() orelse unreachable;
+            cursor_codepoint = next_row.peekNext() orelse unreachable;
         }
 
         win.writeCell(cursor_col, cursor_row, .{
@@ -235,7 +235,7 @@ pub fn processUndo(self: *CharacterBuffer) void {
     std.debug.assert(self.current_line < @min(self.lines.len, self.render_chars.len));
 
     // 1. If we have characters typed in the current line, we pop this
-    if (self.getCurrentLine().prevCodepoint() != null) {
+    if (self.getCurrentLine().prev() != null) {
         _ = self.getCurrentCharacterBuf().pop();
     }
 
@@ -245,7 +245,6 @@ pub fn processUndo(self: *CharacterBuffer) void {
         std.debug.assert(self.getCurrentLine().iter.i == 0);
 
         self.current_line -= 1;
-        _ = self.getCurrentCharacterBuf().pop();
 
         std.debug.assert(self.getCurrentCharacterBuf().items.len > 0);
         std.debug.assert(self.getCurrentLine().iter.i > 0);
@@ -254,7 +253,7 @@ pub fn processUndo(self: *CharacterBuffer) void {
     // 3. Else we must be out of characters
     else {
         std.debug.assert(self.current_line == 0);
-        std.debug.assert(self.getCurrentLine().prevCodepoint() == null);
+        std.debug.assert(self.getCurrentLine().prev() == null);
         std.debug.assert(self.getCurrentCharacterBuf().items.len == 0);
     }
 }
@@ -269,7 +268,7 @@ fn nextCodePointSlice(
     codepoint_limit: u16,
 ) error{ OutOfMemory, NoWords }![]const u8 {
     // If we have characters left to type on this line, then compare against that
-    if (self.getCurrentLine().nextCodepoint()) |next_codepoint_slice| {
+    if (self.getCurrentLine().next()) |next_codepoint_slice| {
         return next_codepoint_slice;
     }
 
@@ -277,7 +276,7 @@ fn nextCodePointSlice(
     else if (self.current_line < MAX_LINE_NO - 1) {
         self.current_line += 1;
         // A new line is guaranteed to be non-empty, so catch unreachable is put in here
-        return self.getCurrentLine().nextCodepoint() orelse unreachable;
+        return self.getCurrentLine().next() orelse unreachable;
     }
 
     // We must scroll down a line and leave self.current_line untouched
@@ -285,7 +284,7 @@ fn nextCodePointSlice(
         try self.scrollDownLine(alloc, words, codepoint_limit);
 
         // A new line is guaranteed to be non-empty, so catch unreachable is put in here
-        return self.getCurrentLine().nextCodepoint() orelse unreachable;
+        return self.getCurrentLine().next() orelse unreachable;
     }
 }
 
