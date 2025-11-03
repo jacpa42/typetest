@@ -30,7 +30,6 @@ Like the above help message says, you need to provide input words. I have a file
 As the tool uses `stdin`, it is easy to setup custom tests with tools like grep:
 
 #### No words longer than 6 characters
-
 ```sh
 export CHAR_LIMIT=6
 grep "^.\{0,$CHAR_LIMIT\}\$" words.txt | ./zig-out/bin/typetest

@@ -83,53 +83,29 @@ pub const Words = struct {
     }
 
     /// Parses the word_buf into some new words.
-    pub fn init(gpa: std.mem.Allocator, word_buf: []const u8) error{ OutOfMemory, InvalidUtf8 }!@This() {
+    pub fn init(
+        gpa: std.mem.Allocator,
+        word_buf: []const u8,
+    ) error{ OutOfMemory, InvalidUtf8, EmptyFile }!@This() {
         var words = try std.ArrayList(Word).initCapacity(gpa, 0);
         errdefer words.deinit(gpa);
 
-        var utf8_iter = (try std.unicode.Utf8View.init(word_buf)).iterator();
-        var grapheme_size: u16 = 0;
-        var byte_index: usize = 0;
-        var word_start: usize = 0;
-        while (utf8_iter.nextCodepointSlice()) |codepoint_slice| {
-            // Check for newline character
-            if (codepoint_slice[0] == '\n') {
-                const word = Word{
-                    .buf = word_buf[word_start..byte_index],
-                    .num_codepoints = grapheme_size,
-                };
+        var word_iterator = std.mem.splitAny(u8, word_buf, " \n\r\t");
 
-                std.debug.assert(std.unicode.utf8CountCodepoints(word.buf) catch unreachable == word.num_codepoints);
-
-                // Include words who are not too big or small
-
-                if (0 < word.buf.len and word.buf.len < MAX_WORD_SIZE) {
-                    try words.append(gpa, word);
-                }
-
-                byte_index += 1;
-                word_start = byte_index;
-                grapheme_size = 0;
-            } else {
-                byte_index += codepoint_slice.len;
-                grapheme_size += 1;
-            }
-        }
-
-        // Add the final word
-        {
-            const word = Word{
-                .buf = word_buf[word_start..byte_index],
-                .num_codepoints = grapheme_size,
-            };
-
-            std.debug.assert(std.unicode.utf8CountCodepoints(word.buf) catch unreachable == word.num_codepoints);
+        while (word_iterator.next()) |word_bytes| {
+            const num_codepoints: usize =
+                std.unicode.utf8CountCodepoints(word_bytes) catch return error.InvalidUtf8;
 
             // Include words who are not too big or small
-            if (0 < word.buf.len and word.buf.len < MAX_WORD_SIZE) {
-                try words.append(gpa, word);
+            if (0 < num_codepoints and num_codepoints < MAX_WORD_SIZE) {
+                try words.append(gpa, .{
+                    .buf = word_bytes,
+                    .num_codepoints = @truncate(num_codepoints),
+                });
             }
         }
+
+        if (words.items.len == 0) return error.EmptyFile;
 
         return @This(){ .words = try words.toOwnedSlice(gpa) };
     }

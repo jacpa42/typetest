@@ -17,6 +17,8 @@ const params = clap.parseParamsComptime(
     \\-h, --help              Display this help and exit
     \\-s, --seed       <seed> Seed to use for rng
     \\-f, --word-file  <file> File to select words from (Ignored if stdin is not empty)
+    \\
+    \\Each word in the input is seperated by whitespace.
 );
 
 /// All the relevant stuff we need after argument parsing
@@ -47,17 +49,16 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         const info = switch (err) {
             error.MissingInput => "You need to provide input words via stdin or via a file with --word-file\n\n",
             error.InvalidUtf8 => "The file path provided is not valid utf8\n\n",
-
             inline else => |e| "An unexpected error has occured: " ++ @errorName(e) ++ "\n\n",
         };
-
         printHelp(info);
     };
 
     const words = Words.init(alloc, word_buffer) catch |err| {
         const info = switch (err) {
             error.OutOfMemory => "We ran out of memory trying to allocate your input :(\n\n",
-            error.InvalidUtf8 => "The file contents provided is not valid utf8\n\n",
+            error.InvalidUtf8 => "The input provided is not valid utf8\n\n",
+            error.EmptyFile => "The input provided is contains no words\n\n",
         };
         printHelp(info);
     };
