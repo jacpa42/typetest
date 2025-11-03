@@ -91,7 +91,12 @@ pub fn deinit(
 
 /// The `InGameAction.undo` action handler
 pub fn processUndo(self: *TimeScene) void {
-    self.character_buffer.processUndo();
+    _ = self.character_buffer.processUndo();
+}
+
+/// The `InGameAction.undo` action handler
+pub fn processUndoWord(self: *TimeScene) void {
+    _ = self.character_buffer.processUndoWord();
 }
 
 /// The `InGameAction.key_press` action handler.

@@ -10,6 +10,7 @@ const now = @import("time.zig").now;
 const parseArgs = cli_args.parseArgs;
 const Args = cli_args.Args;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
+const Words = @import("words.zig").Words;
 
 pub const NUM_FRAME_TIMINGS = 20;
 pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
@@ -20,12 +21,25 @@ frame_counter: u64 = 0,
 frame_timings: FrameTimings = .fill(0),
 /// Current scene of the game
 current_scene: scene.Scene = .{ .menu_scene = .{} },
+/// Struct used to generate tests
+words: Words,
+/// Game seed
+seed: u64,
+
+pub fn init(args: Args) @This() {
+    return @This(){ .words = args.words, .seed = args.seed };
+}
 
 pub inline fn render(
-    self: *const @This(),
-    data: scene.RenderData,
+    self: *@This(),
+    window: vaxis.Window,
 ) error{WindowTooSmall}!void {
-    return self.current_scene.render(data);
+    return self.current_scene.render(.{
+        .words = &self.words,
+        .frame_counter = self.frame_counter,
+        .frame_timings_ns = &self.frame_timings,
+        .root_window = window,
+    });
 }
 
 /// Runs each frame
@@ -51,11 +65,10 @@ pub fn processKeyPress(
     alloc: std.mem.Allocator,
     key: vaxis.Key,
     codepoint_limit: u16,
-    args: *Args,
 ) error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit } {
-    const menuEventHandler = action.MenuAction.processKeydown;
-    const gameEventHandler = action.InGameAction.processKeydown;
-    const resultsEventHandler = action.ResultsAction.processKeydown;
+    const menuEventHandler = action.MenuSceneAction.processKeydown;
+    const gameEventHandler = action.GameSceneAction.processKeydown;
+    const resultsEventHandler = action.ResultsSceneAction.processKeydown;
 
     switch (self.current_scene) {
         .menu_scene => |*supermenu| switch (menuEventHandler(key)) {
@@ -87,7 +100,7 @@ pub fn processKeyPress(
                     self.current_scene = .{
                         .time_scene = try .init(
                             alloc,
-                            &args.words,
+                            &self.words,
                             codepoint_limit,
                             test_duration_ns,
                         ),
@@ -104,7 +117,7 @@ pub fn processKeyPress(
                     self.current_scene = .{
                         .word_scene = try .init(
                             alloc,
-                            &args.words,
+                            &self.words,
                             codepoint_limit,
                             total_words,
                         ),
@@ -122,73 +135,78 @@ pub fn processKeyPress(
             .quit => return .graceful_exit,
             .return_to_menu => {
                 time_scene.deinit(alloc);
-                self.current_scene = .{ .menu_scene = .{} };
+                self.current_scene = .{ .menu_scene = .{
+                    .selection = .{ .time_game_menu = .default },
+                } };
             },
             .new_random_game => {
-                args.seed = @bitCast(std.time.microTimestamp());
-                args.words.reseed(args.seed);
+                self.seed = @bitCast(std.time.microTimestamp());
+                self.words.reseed(self.seed);
 
                 try time_scene.reinit(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
                 );
             },
             .restart_current_game => {
-                args.words.reseed(args.seed);
+                self.words.reseed(self.seed);
 
                 try time_scene.reinit(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
                 );
             },
             .undo_key_press => time_scene.processUndo(),
+            .undo_word => time_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try time_scene.processKeyPress(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     codepoint,
                 );
             },
         },
-
         .word_scene => |*word_scene| switch (gameEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
                 word_scene.deinit(alloc);
-                self.current_scene = .{ .menu_scene = .{} };
+                self.current_scene = .{ .menu_scene = .{
+                    .selection = .{ .word_game_menu = .default },
+                } };
             },
             .new_random_game => {
-                args.seed = @bitCast(std.time.microTimestamp());
-                args.words.reseed(args.seed);
+                self.seed = @bitCast(std.time.microTimestamp());
+                self.words.reseed(self.seed);
 
                 try word_scene.reinit(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     word_scene.words_remaining,
                 );
             },
             .restart_current_game => {
-                args.words.reseed(args.seed);
+                self.words.reseed(self.seed);
 
                 try word_scene.reinit(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     word_scene.words_remaining,
                 );
             },
             .undo_key_press => word_scene.processUndo(),
+            .undo_word => word_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try word_scene.processKeyPress(
                     alloc,
-                    &args.words,
+                    &self.words,
                     codepoint_limit,
                     codepoint,
                 );
@@ -200,6 +218,8 @@ pub fn processKeyPress(
 }
 
 pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+    self.words.deinit(alloc);
+
     switch (self.current_scene) {
         .menu_scene => {},
         .test_results_scene => {},

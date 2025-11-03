@@ -12,7 +12,7 @@ pub fn renderStatistics(
     statistics: []const Statistic,
     win: vaxis.Window,
 ) void {
-    const BUF_SIZE = 1024;
+    const BUF_SIZE = 512;
     var buf: [BUF_SIZE]u8 = @splat(0);
     var render_buf: []u8 = &buf;
 

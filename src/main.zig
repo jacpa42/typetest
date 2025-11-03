@@ -19,10 +19,7 @@ const Event = union(enum) {
 pub fn main() !void {
     const alloc = std.heap.page_allocator;
 
-    var args = try parseArgs(alloc);
-    defer args.deinit(alloc);
-
-    var game_state = State{};
+    var game_state = State.init(try parseArgs(alloc));
     defer game_state.deinit(alloc);
 
     // Init tty
@@ -57,13 +54,7 @@ pub fn main() !void {
                 },
 
                 .key_press => |key| {
-                    const codepoint_limit = render_width - 2;
-                    const result = try game_state.processKeyPress(
-                        alloc,
-                        key,
-                        codepoint_limit,
-                        &args,
-                    );
+                    const result = try game_state.processKeyPress(alloc, key, render_width - 2);
                     switch (result) {
                         .continue_game => {},
                         .graceful_exit => break :game_loop,
@@ -91,14 +82,7 @@ pub fn main() !void {
         }
 
         win.clear();
-        try game_state.render(.{
-            .frame_number = game_state.frame_counter,
-            .root_window = win,
-            .words = &args.words,
-            .frame_timings_ns = &game_state.frame_timings,
-        });
-        // Render the screen. Using a buffered writer will offer much better
-        // performance, but is not required
+        try game_state.render(win);
         try vx.render(tty.writer());
     }
 }

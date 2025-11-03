@@ -1,7 +1,7 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
 
-pub const InGameAction = union(enum) {
+pub const GameSceneAction = union(enum) {
     none,
     /// Exits the game entirely
     quit,
@@ -13,6 +13,10 @@ pub const InGameAction = union(enum) {
     restart_current_game,
     /// Undoes the latest key press (if any)
     undo_key_press,
+    /// Undoes the latest `word` (if any)
+    ///
+    /// The `word` is defined in the normal vim word definition (until a space not including the current one)
+    undo_word,
     /// Does a key press with the provided code
     key_press: u21,
 
@@ -27,13 +31,14 @@ pub const InGameAction = union(enum) {
         if (key.matches('r', ctrl)) return .restart_current_game;
         if (key.matches('n', ctrl)) return .new_random_game;
         if (key.matches(del, .{})) return .undo_key_press;
+        if (key.matches('w', ctrl)) return .undo_word;
         if (key.text != null) return .{ .key_press = key.codepoint };
 
         return .none;
     }
 };
 
-pub const MenuAction = enum {
+pub const MenuSceneAction = enum {
     none,
     /// Exit the program
     quit,
@@ -67,7 +72,7 @@ pub const MenuAction = enum {
 };
 
 /// Actions in the results screen
-pub const ResultsAction = union(enum) {
+pub const ResultsSceneAction = union(enum) {
     none,
     /// quit program
     quit,

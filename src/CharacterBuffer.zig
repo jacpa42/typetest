@@ -247,12 +247,13 @@ pub fn processKeyPress(
 /// The `InGameAction.undo` action handler.
 ///
 /// Essentially want to pop the latest character if we can.
-pub fn processUndo(self: *CharacterBuffer) void {
+pub fn processUndo(self: *CharacterBuffer) ?[]const u8 {
     std.debug.assert(self.current_line < @min(self.lines.len, self.render_chars.len));
 
     // 1. If we have characters typed in the current line, we pop this
-    if (self.getCurrentLine().prev() != null) {
+    if (self.getCurrentLine().prev()) |prev_codepoint| {
         _ = self.getCurrentCharacterBuf().pop();
+        return prev_codepoint;
     }
 
     // 2. Else if we have lines above our current one, we move up a line
@@ -264,6 +265,9 @@ pub fn processUndo(self: *CharacterBuffer) void {
 
         std.debug.assert(self.getCurrentCharacterBuf().items.len > 0);
         std.debug.assert(self.getCurrentLine().iter.i > 0);
+
+        _ = self.getCurrentCharacterBuf().pop();
+        return self.getCurrentLine().prev();
     }
 
     // 3. Else we must be out of characters
@@ -271,7 +275,48 @@ pub fn processUndo(self: *CharacterBuffer) void {
         std.debug.assert(self.current_line == 0);
         std.debug.assert(self.getCurrentLine().prev() == null);
         std.debug.assert(self.getCurrentCharacterBuf().items.len == 0);
+        return null;
     }
+}
+
+const ContainsSpace = bool;
+
+/// The `InGameAction.undo_word` action handler.
+///
+/// The return value indicates whether or not we poped space
+pub fn processUndoWord(self: *CharacterBuffer) ContainsSpace {
+    var space = false;
+
+    if (self.processUndo()) |cp| {
+        space = (cp[0] == ' ');
+    }
+
+    while (self.peekPrevChar()) |prev_peeked| {
+        if (prev_peeked[0] == ' ') break;
+        _ = self.processUndo();
+    }
+
+    return space;
+}
+
+/// Tries to get the previous character from the buffer.
+///
+/// Returns `null` iff we are on the first line
+fn peekPrevChar(self: *const CharacterBuffer) ?[]const u8 {
+    std.debug.assert(self.current_line < @min(self.lines.len, self.render_chars.len));
+
+    // 1. If we have characters typed in the current line, we pop this
+    if (self.getCurrentLineConst().peekPrev()) |prev_codepoint| {
+        return prev_codepoint;
+    }
+
+    // 2. Else if we have lines above our current one, return the last line in that buffer
+    else if (self.current_line > 0) {
+        return self.lines[self.current_line - 1].peekPrev();
+    }
+
+    // 3. Else we must be out of characters
+    else return null;
 }
 
 /// Retrieves the next codepoint from self.

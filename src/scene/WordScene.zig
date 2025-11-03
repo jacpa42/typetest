@@ -75,7 +75,7 @@ pub fn render(
 
     stat.renderStatistics(
         &.{
-            .{ .value = words_left, .label = "left: " },
+            .{ .value = words_left, .label = "words left: " },
             .{ .value = fps, .label = "fps: " },
             .{ .value = wpm, .label = "wpm: " },
         },
@@ -92,7 +92,18 @@ pub fn deinit(
 
 /// The `InGameAction.undo` action handler
 pub fn processUndo(self: *WordsScene) void {
-    self.character_buffer.processUndo();
+    const prev_codepoint_slice = self.character_buffer.processUndo() orelse return;
+
+    if (prev_codepoint_slice[0] == ' ') {
+        self.words_remaining += 1;
+    }
+}
+
+/// The `InGameAction.undo` action handler
+pub fn processUndoWord(self: *WordsScene) void {
+    if (self.character_buffer.processUndoWord()) {
+        self.words_remaining += 1;
+    }
 }
 
 /// The `InGameAction.key_press` action handler.

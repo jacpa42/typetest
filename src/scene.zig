@@ -23,7 +23,7 @@ pub const Scene = union(enum) {
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
-    frame_number: u64,
+    frame_counter: u64,
     root_window: vaxis.Window,
     words: *Words,
     /// several recording of the frame time
