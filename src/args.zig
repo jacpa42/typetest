@@ -17,8 +17,6 @@ const params = clap.parseParamsComptime(
     \\-h, --help              Display this help and exit
     \\-s, --seed       <seed> Seed to use for rng
     \\-f, --word-file  <file> File to select words from (Ignored if stdin is not empty)
-    \\
-    \\ If you provide a word count and duration, duration is prefered.
 );
 
 /// All the relevant stuff we need after argument parsing
