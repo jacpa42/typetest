@@ -45,9 +45,12 @@ pub fn gameWindow(
 }
 
 pub fn menuListItems(
+    comptime Menu: type,
     game_window: vaxis.Window,
 ) vaxis.Window {
-    const list_items_height = scene.MenuItem.COUNT;
+    if (@typeInfo(Menu) != .@"enum") @compileError("Menu list item must be an enum");
+
+    const list_items_height: u16 = comptime @intCast(@typeInfo(Menu).@"enum".fields.len);
     const list_items_width = game_window.width;
     return game_window.child(.{
         .x_off = (game_window.width - list_items_width) / 2,

@@ -17,7 +17,6 @@ const Event = union(enum) {
 };
 
 pub fn main() !void {
-    // Lets try to reuse a 1 MIB buffer for all our memory needs :)
     const alloc = std.heap.page_allocator;
 
     var args = try parseArgs(alloc);
@@ -77,6 +76,13 @@ pub fn main() !void {
             .time_scene => |*time_scene| {
                 if (time_scene.isComplete()) |results| {
                     time_scene.deinit(alloc);
+                    game_state.current_scene = scene.Scene{ .test_results_scene = results };
+                }
+            },
+
+            .word_scene => |*word_scene| {
+                if (word_scene.isComplete()) |results| {
+                    word_scene.deinit(alloc);
                     game_state.current_scene = scene.Scene{ .test_results_scene = results };
                 }
             },

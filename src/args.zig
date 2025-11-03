@@ -5,22 +5,43 @@ const Words = @import("words.zig").Words;
 const KIB = 1024;
 const MAX_FILE_SIZE = 512 * KIB;
 
-const MAX_WORD_COUNT = 1000;
+const MIN_WORD_COUNT = 1;
+const MAX_WORD_COUNT = std.math.maxInt(u32);
+
+const MIN_TIME_GAME_DURATION = 1;
+const MAX_TIME_GAME_DURATION = std.math.maxInt(u32);
+
 const DEFAULT_WORD_COUNT = 50;
 
 const params = clap.parseParamsComptime(
-    \\-h, --help              Display this help and exit.
-    \\-w, --word-count <int>  Number of words to show.
-    \\-s, --seed       <seed> Seed to use for rng.
-    \\-f, --word-file  <file> File to select words from. Ignored if stdin is not empty.
+    \\-h, --help              Display this help and exit
+    \\-d, --duration   <dur>  Duration of the test (starts a time game)
+    \\-w, --word-count <int>  Number of words to show (start a word game)
+    \\-s, --seed       <seed> Seed to use for rng
+    \\-f, --word-file  <file> File to select words from (Ignored if stdin is not empty)
+    \\
+    \\ If you provide a word count and duration, duration is prefered.
 );
+
+const StartGame = union(enum) {
+    none,
+    time_game: u32,
+    word_game: u32,
+
+    fn parse(duration: ?u32, word_count: ?u32) StartGame {
+        if (duration) |d| return StartGame{ .time_game = d };
+        if (word_count) |wc| return StartGame{ .word_game = wc };
+
+        return .none;
+    }
+};
 
 /// All the relevant stuff we need after argument parsing
 pub const Args = struct {
     word_buffer: []const u8,
     words: Words,
     seed: u64 = 0,
-    word_count: u64 = 0,
+    start_game: StartGame,
 
     pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         alloc.free(self.word_buffer);
@@ -37,7 +58,16 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         .{
             .file = clap.parsers.string,
             .seed = clap.parsers.int(u64, 10),
-            .int = parsers.int(u64, 1, MAX_WORD_COUNT),
+            .int = parsers.int(
+                u32,
+                MIN_WORD_COUNT,
+                MAX_WORD_COUNT,
+            ),
+            .dur = parsers.int(
+                u32,
+                MIN_TIME_GAME_DURATION,
+                MAX_TIME_GAME_DURATION,
+            ),
         },
         .{ .allocator = alloc },
     );
@@ -59,11 +89,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         printHelp(info);
     };
 
-    const words = Words.init(
-        alloc,
-        word_buffer,
-        MAX_WORD_COUNT,
-    ) catch |err| {
+    const words = Words.init(alloc, word_buffer) catch |err| {
         const info = switch (err) {
             error.OutOfMemory => "We ran out of memory trying to allocate your input :(\n\n",
             error.InvalidUtf8 => "The file contents provided is not valid utf8\n\n",
@@ -75,7 +101,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         .word_buffer = word_buffer,
         .words = words,
         .seed = res.args.seed orelse 0,
-        .word_count = res.args.@"word-count" orelse DEFAULT_WORD_COUNT,
+        .start_game = .parse(res.args.duration, res.args.@"word-count"),
     };
 }
 

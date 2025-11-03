@@ -37,6 +37,8 @@ pub const MenuAction = enum {
     none,
     /// Exit the program
     quit,
+    /// Return to previous menu or exit
+    goback,
     /// Select the current menu option
     select,
     /// Move the selection up
@@ -52,7 +54,9 @@ pub const MenuAction = enum {
         const down = vaxis.Key.down;
         const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
 
-        if (key.matches('c', ctrl) or key.matches(esc, .{})) return .quit;
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches(esc, .{})) return .goback;
+
         if (key.matches(ret, .{})) return .select;
 
         if (key.matchesAny(&.{ 'k', up }, .{})) return .move_up;
@@ -72,10 +76,11 @@ pub const ResultsAction = union(enum) {
 
     /// Process the event from vaxis and optionally emit an action to process
     pub fn processKeydown(key: vaxis.Key) @This() {
+        const esc = std.ascii.control_code.esc;
         const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
 
         if (key.matches('c', ctrl)) return .quit;
-        if (key.matches('q', .{})) return .return_to_menu;
+        if (key.matches(esc, .{})) return .return_to_menu;
 
         return .none;
     }

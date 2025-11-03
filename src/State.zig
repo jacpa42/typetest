@@ -21,15 +21,11 @@ frame_timings: FrameTimings = .fill(0),
 /// Current scene of the game
 current_scene: scene.Scene = .{ .menu_scene = .{} },
 
-pub fn render(
+pub inline fn render(
     self: *const @This(),
     data: scene.RenderData,
 ) error{WindowTooSmall}!void {
-    switch (self.current_scene) {
-        .menu_scene => |menu_scene| try menu_scene.render(data),
-        .time_scene => |*time_scene| try time_scene.render(data),
-        .test_results_scene => |*test_results| try test_results.render(data),
-    }
+    return self.current_scene.render(data);
 }
 
 /// Runs each frame
@@ -62,28 +58,58 @@ pub fn processKeyPress(
     const resultsEventHandler = action.ResultsAction.processKeydown;
 
     switch (self.current_scene) {
-        .menu_scene => |*menu| switch (menuEventHandler(key)) {
+        .menu_scene => |*supermenu| switch (menuEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
-            .move_up => menu.moveSelectionUp(),
-            .move_down => menu.moveSelectionDown(),
-            .select => {
-                const test_duration_ns: u64 = switch (menu.selection) {
-                    .exit => return .graceful_exit,
-                    .time15 => 15 * 1e9,
-                    .time30 => 30 * 1e9,
-                    .time60 => 60 * 1e9,
-                    .time120 => 120 * 1e9,
-                };
+            .goback => switch (supermenu.selection) {
+                .main_menu => return .graceful_exit,
+                .time_game_menu => supermenu.selection = .{ .main_menu = .default },
+                .word_game_menu => supermenu.selection = .{ .main_menu = .default },
+            },
+            .move_up => supermenu.moveSelection(.up),
+            .move_down => supermenu.moveSelection(.down),
+            .select => switch (supermenu.selection) {
+                .main_menu => |inner_menu| {
+                    switch (inner_menu) {
+                        .exit => return .graceful_exit,
+                        .time => supermenu.selection = .{ .time_game_menu = .default },
+                        .word => supermenu.selection = .{ .word_game_menu = .default },
+                    }
+                },
+                .time_game_menu => |inner_menu| {
+                    const test_duration_ns: u64 = switch (inner_menu) {
+                        .time15 => 15 * 1e9,
+                        .time30 => 30 * 1e9,
+                        .time60 => 60 * 1e9,
+                        .time120 => 120 * 1e9,
+                    };
 
-                self.current_scene = .{
-                    .time_scene = try .init(
-                        alloc,
-                        &args.words,
-                        codepoint_limit,
-                        test_duration_ns,
-                    ),
-                };
+                    self.current_scene = .{
+                        .time_scene = try .init(
+                            alloc,
+                            &args.words,
+                            codepoint_limit,
+                            test_duration_ns,
+                        ),
+                    };
+                },
+                .word_game_menu => |inner_menu| {
+                    const total_words: u32 = switch (inner_menu) {
+                        .words10 => 10,
+                        .words25 => 25,
+                        .words50 => 50,
+                        .words100 => 100,
+                    };
+
+                    self.current_scene = .{
+                        .word_scene = try .init(
+                            alloc,
+                            &args.words,
+                            codepoint_limit,
+                            total_words,
+                        ),
+                    };
+                },
             },
         },
         .test_results_scene => switch (resultsEventHandler(key)) {
@@ -129,6 +155,45 @@ pub fn processKeyPress(
                 );
             },
         },
+
+        .word_scene => |*word_scene| switch (gameEventHandler(key)) {
+            .none => return .continue_game,
+            .quit => return .graceful_exit,
+            .return_to_menu => {
+                word_scene.deinit(alloc);
+                self.current_scene = .{ .menu_scene = .{} };
+            },
+            .new_random_game => {
+                args.seed = @bitCast(std.time.microTimestamp());
+                args.words.reseed(args.seed);
+
+                try word_scene.reinit(
+                    alloc,
+                    &args.words,
+                    codepoint_limit,
+                    word_scene.words_remaining,
+                );
+            },
+            .restart_current_game => {
+                args.words.reseed(args.seed);
+
+                try word_scene.reinit(
+                    alloc,
+                    &args.words,
+                    codepoint_limit,
+                    word_scene.words_remaining,
+                );
+            },
+            .undo_key_press => word_scene.processUndo(),
+            .key_press => |codepoint| {
+                try word_scene.processKeyPress(
+                    alloc,
+                    &args.words,
+                    codepoint_limit,
+                    codepoint,
+                );
+            },
+        },
     }
 
     return .continue_game;
@@ -139,5 +204,6 @@ pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
         .menu_scene => {},
         .test_results_scene => {},
         .time_scene => |*time_scene| time_scene.deinit(alloc),
+        .word_scene => |*word_scene| word_scene.deinit(alloc),
     }
 }

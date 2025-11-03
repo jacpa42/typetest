@@ -216,16 +216,18 @@ pub fn processKeyPress(
     const true_codepoint: u21 = std.unicode.utf8Decode(true_codepoint_slice) catch unreachable;
 
     var style: vaxis.Style = undefined;
-    var ret: KeyPressOutcome = undefined;
-
-    // I use a block here just to make the rendering nicer
+    var ret: KeyPressOutcome = .{
+        .true_codepoint = true_codepoint,
+        .true_codepoint_slice = true_codepoint_slice,
+        .valid = undefined,
+    };
 
     if (true_codepoint == typed_codepoint) {
         style = character_style.right;
-        ret = .right;
+        ret.valid = .right;
     } else {
         style = character_style.wrong;
-        ret = .wrong;
+        ret.valid = .wrong;
 
         // This fixes some jank in the rendering that i dont like
         if (true_codepoint == ' ') {

@@ -48,23 +48,6 @@ pub fn renderStatistics(
             },
         };
 
-        const horizontal_offset = (child_win.width -| @as(u16, @intCast(formatted_value.len + statistic.label.len))) / 2;
-
-        _ = child_win.print(segments, .{ .col_offset = horizontal_offset, .wrap = .none });
+        _ = child_win.print(segments, .{ .col_offset = 0, .wrap = .none });
     }
-
-    // var col: u16 = 0;
-    // inline for (segments) |seg| {
-    //     std.debug.assert(std.unicode.utf8ValidateSlice(seg.text));
-    //     var iter = std.unicode.Utf8View.initUnchecked(seg.text).iterator();
-    //
-    //     print: while (col < win.width) : (col += 1) {
-    //         const next = iter.nextCodepointSlice() orelse break :print;
-    //
-    //         win.writeCell(col, 0, .{
-    //             .char = .{ .grapheme = next },
-    //             .style = seg.style,
-    //         });
-    //     }
-    // }
 }

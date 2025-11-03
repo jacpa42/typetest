@@ -83,12 +83,8 @@ pub const Words = struct {
     }
 
     /// Parses the word_buf into some new words.
-    pub fn init(
-        gpa: std.mem.Allocator,
-        word_buf: []const u8,
-        max_words: usize,
-    ) error{ OutOfMemory, InvalidUtf8 }!@This() {
-        var words = try std.ArrayList(Word).initCapacity(gpa, max_words + 1);
+    pub fn init(gpa: std.mem.Allocator, word_buf: []const u8) error{ OutOfMemory, InvalidUtf8 }!@This() {
+        var words = try std.ArrayList(Word).initCapacity(gpa, 0);
         errdefer words.deinit(gpa);
 
         var utf8_iter = (try std.unicode.Utf8View.init(word_buf)).iterator();
