@@ -3,6 +3,11 @@ const builtin = @import("builtin");
 const State = @import("../State.zig");
 const FrameTimings = State.FrameTimings;
 
+/// The maximum size required to print an integer type `T`.
+pub fn requiredBufSize(T: type) usize {
+    return std.math.log10_int(@as(T, std.math.maxInt(T))) + 1;
+}
+
 pub fn now() std.time.Instant {
     const supported = comptime switch (builtin.os.tag) {
         .wasi => false,

@@ -6,7 +6,7 @@ const character_style = @import("character_style.zig");
 
 const Words = @import("words.zig").Words;
 const Word = @import("words.zig").Word;
-const now = @import("time.zig").now;
+const now = @import("scene/util.zig").now;
 const KeyPressOutcome = scene.KeyPressOutcome;
 
 /// I need a struct to handle this logic:
@@ -29,9 +29,6 @@ const RenderChar = struct {
     style: vaxis.Style,
 };
 
-// todo: I want to scroll only when I reach MAX_LINE_NO. I will need to
-// rework the way in which the game is processed and rendered :(
-//
 /// A buffer which holds the sentences. Note that each line is allocated using the `alloc` field.
 lines: [NUM_RENDER_LINES]Line,
 

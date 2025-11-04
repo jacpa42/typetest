@@ -6,9 +6,7 @@ const cli_args = @import("args.zig");
 const scene = @import("scene.zig");
 const action = @import("action.zig");
 
-const now = @import("time.zig").now;
-const parseArgs = cli_args.parseArgs;
-const Args = cli_args.Args;
+const now = @import("scene/util.zig").now;
 const State = @import("State.zig");
 
 const Event = union(enum) {
@@ -19,8 +17,8 @@ const Event = union(enum) {
 pub fn main() !void {
     const alloc = std.heap.page_allocator;
 
-    var game_state = State.init(try parseArgs(alloc));
-    defer game_state.deinit(alloc);
+    var game_state = try State.init(alloc);
+    defer game_state.deinit();
 
     // Init tty
     var tty_buffer: [1024]u8 = undefined;
@@ -54,7 +52,7 @@ pub fn main() !void {
                 },
 
                 .key_press => |key| {
-                    const result = try game_state.processKeyPress(alloc, key, render_width - 2);
+                    const result = try game_state.processKeyPress(key, render_width - 2);
                     switch (result) {
                         .continue_game => {},
                         .graceful_exit => break :game_loop,
@@ -64,18 +62,14 @@ pub fn main() !void {
         }
 
         switch (game_state.current_scene) {
-            .time_scene => |*time_scene| {
-                if (time_scene.isComplete()) |results| {
-                    time_scene.deinit(alloc);
-                    game_state.current_scene = scene.Scene{ .test_results_scene = results };
-                }
+            .time_scene => |*time_scene| if (time_scene.isComplete()) |results| {
+                time_scene.deinit(alloc);
+                game_state.current_scene = scene.Scene{ .test_results_scene = results };
             },
 
-            .word_scene => |*word_scene| {
-                if (word_scene.isComplete()) |results| {
-                    word_scene.deinit(alloc);
-                    game_state.current_scene = scene.Scene{ .test_results_scene = results };
-                }
+            .word_scene => |*word_scene| if (word_scene.isComplete()) |results| {
+                word_scene.deinit(alloc);
+                game_state.current_scene = scene.Scene{ .test_results_scene = results };
             },
             .menu_scene => {},
             .test_results_scene => {},
@@ -84,5 +78,44 @@ pub fn main() !void {
         win.clear();
         try game_state.render(win);
         try vx.render(tty.writer());
+    }
+}
+
+test "statistic formatting" {
+    const labels: [7][]const u8 = .{
+        "wpm: ",
+        "ti食me left: ",
+        "words left: ",
+        "fp食s食: ",
+        "mistakes: ",
+        "雨: ",
+        "🐐雨食: ",
+    };
+    var prng = std.Random.DefaultPrng.init(0);
+    const statistic = @import("scene/statistics.zig");
+
+    for (0.., labels) |seed, label| {
+        std.debug.print("using seed: {}\n", .{seed});
+        prng.seed(@as(u64, seed));
+        var rng = prng.random();
+        const true_value = rng.int(u32);
+
+        const stat = statistic.Statistic{
+            .label = label,
+            .value = true_value,
+        };
+        const fmt_stat = statistic.FormattedStatistic.init(stat);
+
+        {
+            const fmt_len = try std.unicode.utf8CountCodepoints(label) + fmt_stat.getValue().len;
+            try std.testing.expect(fmt_stat.codepoint_len == fmt_len);
+        }
+
+        {
+            const parsed_value = try std.fmt.parseInt(u32, fmt_stat.getValue(), 10);
+            std.debug.print("true_value: {}, formatted_value: {s}\n", .{ true_value, fmt_stat.getValue() });
+            std.debug.print("formatted_value_buf: {s}\n", .{fmt_stat.value_buffer});
+            try std.testing.expect(parsed_value == true_value);
+        }
     }
 }

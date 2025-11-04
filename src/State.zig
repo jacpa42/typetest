@@ -6,13 +6,12 @@ const cli_args = @import("args.zig");
 const scene = @import("scene.zig");
 const action = @import("action.zig");
 
-const now = @import("time.zig").now;
+const now = @import("scene/util.zig").now;
 const parseArgs = cli_args.parseArgs;
-const Args = cli_args.Args;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Words = @import("words.zig").Words;
 
-pub const NUM_FRAME_TIMINGS = 20;
+pub const NUM_FRAME_TIMINGS = 10;
 pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
 
 /// What frame of the game are we on
@@ -26,19 +25,35 @@ words: Words,
 /// Game seed
 seed: u64,
 
-pub fn init(args: Args) @This() {
-    return @This(){ .words = args.words, .seed = args.seed };
+alloc: std.mem.Allocator,
+/// I have issues when using stack buffers for my render functions,
+/// so I pass to to each function which needs to render stuff and
+/// they must just alloc the memory they need in here.
+///
+/// Gets cleared the end of each frame.
+frame_print_buffer: std.ArrayList(u8),
+
+pub fn init(alloc: std.mem.Allocator) !@This() {
+    const args = try parseArgs(alloc);
+    return @This(){
+        .alloc = alloc,
+        .words = args.words,
+        .seed = args.seed,
+        .frame_print_buffer = .empty,
+    };
 }
 
 pub inline fn render(
     self: *@This(),
     window: vaxis.Window,
-) error{WindowTooSmall}!void {
+) error{ WindowTooSmall, OutOfMemory }!void {
     return self.current_scene.render(.{
+        .alloc = self.alloc,
         .words = &self.words,
         .frame_counter = self.frame_counter,
         .frame_timings_ns = &self.frame_timings,
         .root_window = window,
+        .frame_print_buffer = &self.frame_print_buffer,
     });
 }
 
@@ -56,13 +71,13 @@ pub fn tickFrame(
 
     self.frame_counter += 1;
     self.frame_timings.append(this_frame_time);
+    self.frame_print_buffer.clearRetainingCapacity();
 
     defer std.Thread.sleep(frame_delay_ns -| this_frame_time);
 }
 
 pub fn processKeyPress(
     self: *@This(),
-    alloc: std.mem.Allocator,
     key: vaxis.Key,
     codepoint_limit: u16,
 ) error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit } {
@@ -99,7 +114,7 @@ pub fn processKeyPress(
 
                     self.current_scene = .{
                         .time_scene = try .init(
-                            alloc,
+                            self.alloc,
                             &self.words,
                             codepoint_limit,
                             test_duration_ns,
@@ -116,7 +131,7 @@ pub fn processKeyPress(
 
                     self.current_scene = .{
                         .word_scene = try .init(
-                            alloc,
+                            self.alloc,
                             &self.words,
                             codepoint_limit,
                             total_words,
@@ -134,7 +149,7 @@ pub fn processKeyPress(
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
-                time_scene.deinit(alloc);
+                time_scene.deinit(self.alloc);
                 self.current_scene = .{ .menu_scene = .{
                     .selection = .{ .time_game_menu = .default },
                 } };
@@ -144,7 +159,7 @@ pub fn processKeyPress(
                 self.words.reseed(self.seed);
 
                 try time_scene.reinit(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
@@ -154,7 +169,7 @@ pub fn processKeyPress(
                 self.words.reseed(self.seed);
 
                 try time_scene.reinit(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
@@ -164,7 +179,7 @@ pub fn processKeyPress(
             .undo_word => time_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try time_scene.processKeyPress(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     codepoint,
@@ -175,7 +190,7 @@ pub fn processKeyPress(
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
-                word_scene.deinit(alloc);
+                word_scene.deinit(self.alloc);
                 self.current_scene = .{ .menu_scene = .{
                     .selection = .{ .word_game_menu = .default },
                 } };
@@ -185,7 +200,7 @@ pub fn processKeyPress(
                 self.words.reseed(self.seed);
 
                 try word_scene.reinit(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     word_scene.words_remaining,
@@ -195,7 +210,7 @@ pub fn processKeyPress(
                 self.words.reseed(self.seed);
 
                 try word_scene.reinit(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     word_scene.words_remaining,
@@ -205,7 +220,7 @@ pub fn processKeyPress(
             .undo_word => word_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try word_scene.processKeyPress(
-                    alloc,
+                    self.alloc,
                     &self.words,
                     codepoint_limit,
                     codepoint,
@@ -217,13 +232,14 @@ pub fn processKeyPress(
     return .continue_game;
 }
 
-pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-    self.words.deinit(alloc);
+pub fn deinit(self: *@This()) void {
+    self.words.deinit(self.alloc);
+    self.frame_print_buffer.deinit(self.alloc);
 
     switch (self.current_scene) {
         .menu_scene => {},
         .test_results_scene => {},
-        .time_scene => |*time_scene| time_scene.deinit(alloc),
-        .word_scene => |*word_scene| word_scene.deinit(alloc),
+        .time_scene => |*time_scene| time_scene.deinit(self.alloc),
+        .word_scene => |*word_scene| word_scene.deinit(self.alloc),
     }
 }

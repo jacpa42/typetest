@@ -97,7 +97,6 @@ fn moveInnnerSelection(
 pub const Direction = enum { up, down };
 
 pub const SuperMenu = union(enum) {
-    // todo add the rest of the menu items here
     main_menu: MainMenu,
     time_game_menu: TimeGameMenu,
     word_game_menu: WordGameMenu,

@@ -1,6 +1,9 @@
 const std = @import("std");
+const vaxis = @import("vaxis");
 const layout = @import("window_layout.zig");
+const character_style = @import("../character_style.zig");
 const super = @import("../scene.zig");
+const util = @import("util.zig");
 
 average_wpm: f32,
 
@@ -8,33 +11,29 @@ average_wpm: f32,
 pub fn render(
     self: *const @This(),
     data: super.RenderData,
-) error{WindowTooSmall}!void {
+) error{ WindowTooSmall, OutOfMemory }!void {
     const game_window = try layout.gameWindow(data.root_window);
+    const middle_box = layout.resultsWindow(game_window);
 
-    // as we add more stats here we need to change how they are rendered
+    const col_offset = (middle_box.width -| @as(u16, @truncate(10))) / 2;
 
-    const middle_box_width = game_window.width / 2;
-    const middle_box_height = game_window.height / 2;
-    const middle_box = game_window.child(.{
-        .width = middle_box_width,
-        .height = middle_box_height,
-        .x_off = (game_window.width - middle_box_width) / 2,
-        .y_off = (game_window.height - middle_box_height) / 2,
-        .border = .{ .where = .all },
-    });
-
-    var buf: [256]u8 = undefined;
-
-    const print_buf = std.fmt.bufPrint(
-        &buf,
-        "average wpm: {d:4.2}",
-        .{self.average_wpm},
-    ) catch std.process.exit(1);
-
-    // const col_offset = (middle_box_width -| @as(u16, @truncate(print_buf.len))) / 2;
-    const col_offset = 0;
-    _ = middle_box.printSegment(
-        .{ .text = print_buf },
-        .{ .col_offset = col_offset },
+    const print_buf = try data.frame_print_buffer.addManyAsSlice(
+        data.alloc,
+        util.requiredBufSize(u32),
     );
+
+    const len = std.fmt.printInt(print_buf, @as(u32, @intFromFloat(self.average_wpm)), 10, .lower, .{});
+    // pop off the last couple values we dont use
+    data.frame_print_buffer.items.len -= (print_buf.len - len);
+
+    _ = middle_box.print(&.{
+        vaxis.Segment{
+            .text = "average wpm: ",
+            .style = character_style.statistic_label,
+        },
+        vaxis.Segment{
+            .text = print_buf[0..len],
+            .style = character_style.statistic_value,
+        },
+    }, .{ .col_offset = col_offset });
 }

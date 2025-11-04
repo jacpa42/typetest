@@ -1,6 +1,5 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
-const scene = @import("../scene.zig");
 const words = @import("../words.zig");
 const character_styles = @import("../character_style.zig");
 const CharacterBuffer = @import("../CharacterBuffer.zig");
@@ -66,19 +65,7 @@ pub fn menuListItems(
 pub fn resultsWindow(
     game_window: vaxis.Window,
 ) vaxis.Window {
-    const height = CharacterBuffer.NUM_RENDER_LINES + 2;
-
-    return game_window.child(.{
-        .x_off = 0,
-        .y_off = (game_window.height -| height) / 2,
-        .width = game_window.width,
-        .height = height,
-        .border = .{
-            .style = character_styles.game_window_border,
-            .where = .all,
-            .glyphs = .single_rounded,
-        },
-    });
+    return game_window;
 }
 
 /// The child window where our text box input goes.

@@ -1,53 +1,55 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
-const scene = @import("../scene.zig");
-const layout = @import("window_layout.zig");
+const super = @import("../scene.zig");
 const character_style = @import("../character_style.zig");
-const now = @import("../time.zig").now;
+const layout = @import("window_layout.zig");
+const now = @import("util.zig").now;
 
-const Statistic = struct { label: []const u8, value: f32 };
+const REQUIRED_BUF_SIZE: usize = std.math.log10_int(@as(StatisticValue, std.math.maxInt(StatisticValue))) + 1;
+const StatisticValue = u32;
+pub const Statistic = struct {
+    label: []const u8,
+    value: StatisticValue,
+};
 
 /// Renders some integer type to the window
 pub fn renderStatistics(
-    statistics: []const Statistic,
-    win: vaxis.Window,
-) void {
-    const BUF_SIZE = 512;
-    var buf: [BUF_SIZE]u8 = @splat(0);
-    var render_buf: []u8 = &buf;
+    COUNT: comptime_int,
+    statistics: *const [COUNT]Statistic,
+    data: super.RenderData,
+) error{ WindowTooSmall, OutOfMemory }!void {
+    const win = layout.runningStatisticsWindow(try layout.gameWindow(data.root_window));
 
-    const child_win_width = win.width / @as(u16, @intCast(statistics.len));
-
+    const child_win_width = win.width / COUNT;
     var x_off: u16 = 0;
-    for (statistics) |statistic| {
-        const child_win = win.child(.{
-            .x_off = x_off,
-            .height = 1,
+
+    inline for (statistics) |stat| {
+        defer x_off += child_win_width;
+
+        const print_buf = try data.frame_print_buffer.addManyAsSlice(
+            data.alloc,
+            REQUIRED_BUF_SIZE,
+        );
+
+        const len = std.fmt.printInt(print_buf, stat.value, 10, .lower, .{});
+        // pop off the last couple values we dont use
+        data.frame_print_buffer.items.len -= (print_buf.len - len);
+
+        const statistic_win = win.child(.{
+            .height = win.height,
             .width = child_win_width,
+            .x_off = x_off,
         });
-        x_off += child_win_width;
 
-        const formatted_value = std.fmt.bufPrint(
-            render_buf,
-            "{d:.0}",
-            .{statistic.value},
-        ) catch {
-            @panic("Failed to print statistic to buffer");
-        };
-
-        render_buf = render_buf[formatted_value.len..];
-
-        const segments: []const vaxis.Segment = &.{
-            .{
-                .text = statistic.label,
+        _ = statistic_win.print(&.{
+            vaxis.Segment{
+                .text = stat.label,
                 .style = character_style.statistic_label,
             },
-            .{
-                .text = formatted_value,
-                .style = character_style.fps,
+            vaxis.Segment{
+                .text = print_buf[0..len],
+                .style = character_style.statistic_value,
             },
-        };
-
-        _ = child_win.print(segments, .{ .col_offset = 0, .wrap = .none });
+        }, .{});
     }
 }

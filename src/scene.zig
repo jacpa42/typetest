@@ -1,3 +1,4 @@
+const std = @import("std");
 const vaxis = @import("vaxis");
 const Words = @import("words.zig").Words;
 const FrameTimings = @import("State.zig").FrameTimings;
@@ -11,7 +12,7 @@ pub const Scene = union(enum) {
     pub fn render(
         self: *const Scene,
         data: RenderData,
-    ) error{WindowTooSmall}!void {
+    ) error{ WindowTooSmall, OutOfMemory }!void {
         switch (self.*) {
             .menu_scene => |*sc| try sc.render(data),
             .time_scene => |*sc| try sc.render(data),
@@ -23,11 +24,19 @@ pub const Scene = union(enum) {
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
+    alloc: std.mem.Allocator,
+
     frame_counter: u64,
     root_window: vaxis.Window,
     words: *Words,
-    /// several recording of the frame time
+    /// Several recording of the frame time
     frame_timings_ns: *const FrameTimings,
+    /// I have issues when using stack buffers for my render functions,
+    /// so I pass to to each function which needs to render stuff and
+    /// they must just alloc the memory they need in here.
+    ///
+    /// Get cleared the end of each frame
+    frame_print_buffer: *std.ArrayList(u8),
 };
 
 pub const KeyPressOutcome = struct {

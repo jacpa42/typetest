@@ -60,26 +60,29 @@ pub fn reinit(
 pub fn render(
     self: *const WordsScene,
     data: super.RenderData,
-) error{WindowTooSmall}!void {
+) error{ WindowTooSmall, OutOfMemory }!void {
     const game_window = try layout.gameWindow(data.root_window);
 
     self.character_buffer.render(layout.charBufWindow(game_window));
 
-    const fps = util.framesPerSecond(data.frame_timings_ns);
-    const wpm: f32 = util.wordsPerMinute(
+    const fps = @as(u32, @intFromFloat(
+        util.framesPerSecond(data.frame_timings_ns),
+    ));
+    const wpm = @as(u32, @intFromFloat(util.wordsPerMinute(
         self.correct_counter,
         self.mistake_counter,
         self.test_start,
-    );
-    const words_left = @as(f32, @floatFromInt(self.words_remaining));
-
-    stat.renderStatistics(
+    )));
+    const words_left = self.words_remaining;
+    const num_statistics = 3;
+    try stat.renderStatistics(
+        num_statistics,
         &.{
             .{ .value = words_left, .label = "words left: " },
             .{ .value = fps, .label = "fps: " },
             .{ .value = wpm, .label = "wpm: " },
         },
-        layout.runningStatisticsWindow(game_window),
+        data,
     );
 }
 
