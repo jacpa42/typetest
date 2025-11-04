@@ -82,10 +82,11 @@ pub const ResultsSceneAction = union(enum) {
     /// Process the event from vaxis and optionally emit an action to process
     pub fn processKeydown(key: vaxis.Key) @This() {
         const esc = std.ascii.control_code.esc;
+        const cr = std.ascii.control_code.cr;
         const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
 
         if (key.matches('c', ctrl)) return .quit;
-        if (key.matches(esc, .{})) return .return_to_menu;
+        if (key.matchesAny(&.{ esc, cr }, .{})) return .return_to_menu;
 
         return .none;
     }

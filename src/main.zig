@@ -9,6 +9,8 @@ const action = @import("action.zig");
 const now = @import("scene/util.zig").now;
 const State = @import("State.zig");
 
+// todo: There is a bug somewhere in the time game results screen
+
 const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
