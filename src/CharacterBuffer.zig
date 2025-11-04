@@ -113,18 +113,22 @@ pub fn render(
 
     // Render the typed out characters
     for (self.render_chars[0..self.current_line]) |rchars| {
+        defer row += 1;
+
         var col =
             (win.width -| @as(u16, @truncate(rchars.items.len))) / 2;
 
-        for (rchars.items) |rchar| {
+        println: for (rchars.items) |rchar| {
+            defer col += 1;
+            if (col > win.width) break :println;
             win.writeCell(col, row, .{
-                .char = .{ .grapheme = rchar.true_codepoint_slice },
+                .char = .{
+                    .grapheme = rchar.true_codepoint_slice,
+                    .width = 0,
+                },
                 .style = rchar.style,
             });
-            col += 1;
         }
-
-        row += 1;
     }
 
     var cursor_col: u16 = 0;
@@ -135,7 +139,10 @@ pub fn render(
 
         for (self.getCurrentCharacterBufConst().items) |rchar| {
             win.writeCell(col, row, .{
-                .char = .{ .grapheme = rchar.true_codepoint_slice },
+                .char = .{
+                    .grapheme = rchar.true_codepoint_slice,
+                    .width = 0,
+                },
                 .style = rchar.style,
             });
 
@@ -146,7 +153,10 @@ pub fn render(
 
         while (current_line_copy.next()) |codepoint| : (col += 1) {
             win.writeCell(col, row, .{
-                .char = .{ .grapheme = codepoint },
+                .char = .{
+                    .grapheme = codepoint,
+                    .width = 0,
+                },
                 .style = character_style.untyped,
             });
         }
@@ -162,7 +172,7 @@ pub fn render(
 
         while (untyped_line_copy.next()) |codepoint| : (col += 1) {
             win.writeCell(col, row, .{
-                .char = .{ .grapheme = codepoint },
+                .char = .{ .grapheme = codepoint, .width = 0 },
                 .style = character_style.untyped,
             });
         }
@@ -191,7 +201,7 @@ pub fn render(
         }
 
         win.writeCell(cursor_col, cursor_row, .{
-            .char = .{ .grapheme = cursor_codepoint },
+            .char = .{ .grapheme = cursor_codepoint, .width = 0 },
             .style = character_style.cursor,
         });
     }

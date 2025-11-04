@@ -16,6 +16,8 @@ pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
 
 /// What frame of the game are we on
 frame_counter: u64 = 0,
+/// The animation duration (in frames)
+animation_duration: u64,
 /// The time taken to render a frame in ns
 frame_timings: FrameTimings = .fill(0),
 /// Current scene of the game
@@ -41,6 +43,7 @@ pub fn init(alloc: std.mem.Allocator) !@This() {
         .alloc = alloc,
         .words = args.words,
         .seed = args.seed,
+        .animation_duration = args.animation_duration,
         .frame_print_buffer = try .initCapacity(alloc, 1024 * 1024),
     };
 }
@@ -48,13 +51,14 @@ pub fn init(alloc: std.mem.Allocator) !@This() {
 pub inline fn render(
     self: *@This(),
     window: vaxis.Window,
-) error{ WindowTooSmall, OutOfMemory }!void {
+) error{ EmptyLineNotAllowed, OutOfMemory }!void {
     return self.current_scene.render(.{
         .words = &self.words,
-        .frame_counter = self.frame_counter,
         .frame_timings_ns = &self.frame_timings,
         .root_window = window,
         .frame_print_buffer = &self.frame_print_buffer,
+        .frame_counter = self.frame_counter,
+        .animation_duration = self.animation_duration,
     });
 }
 
@@ -100,7 +104,6 @@ pub fn processKeyPress(
             .select => switch (supermenu.selection) {
                 .main_menu => |inner_menu| {
                     switch (inner_menu) {
-                        .exit => return .graceful_exit,
                         .time => supermenu.selection = .{ .time_game_menu = .default },
                         .word => supermenu.selection = .{ .word_game_menu = .default },
                     }

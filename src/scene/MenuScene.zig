@@ -2,6 +2,7 @@ const std = @import("std");
 const vaxis = @import("vaxis");
 const super = @import("../scene.zig");
 const layout = @import("window_layout.zig");
+const Header = @import("header.zig").Header;
 
 const MenuScene = @This();
 
@@ -11,13 +12,59 @@ selection: SuperMenu = .{ .main_menu = .default },
 pub fn render(
     self: *const MenuScene,
     data: super.RenderData,
-) error{WindowTooSmall}!void {
-    const main_window = try layout.gameWindow(data.root_window);
+) error{EmptyLineNotAllowed}!void {
+    comptime Header.comptimeChecks();
 
     switch (self.selection) {
-        .main_menu => |menu| renderMenu(MainMenu, menu, main_window),
-        .time_game_menu => |menu| renderMenu(TimeGameMenu, menu, main_window),
-        .word_game_menu => |menu| renderMenu(WordGameMenu, menu, main_window),
+        .main_menu => |main_menu| {
+            for (0..@typeInfo(Header).@"enum".fields.len) |i| {
+                const largest_header: Header = @enumFromInt(i);
+
+                const title_menu = layout.headerWindow(
+                    data.root_window,
+                    largest_header,
+                ) catch continue;
+
+                largest_header.render(
+                    title_menu,
+                    data.frame_counter,
+                    data.animation_duration,
+                );
+
+                const main_menu_window = data.root_window.child(.{
+                    .width = data.root_window.width,
+                    .height = data.root_window.height -| title_menu.height,
+                    .y_off = title_menu.height,
+                });
+
+                return renderMenu(MainMenu, main_menu, main_menu_window);
+            }
+
+            renderMenu(
+                MainMenu,
+                main_menu,
+                try layout.gameWindow(
+                    data.root_window,
+                    data.words.max_codepoints,
+                ),
+            );
+        },
+        .time_game_menu => |time_game_menu| renderMenu(
+            TimeGameMenu,
+            time_game_menu,
+            try layout.gameWindow(
+                data.root_window,
+                data.words.max_codepoints,
+            ),
+        ),
+        .word_game_menu => |word_game_menu| renderMenu(
+            WordGameMenu,
+            word_game_menu,
+            try layout.gameWindow(
+                data.root_window,
+                data.words.max_codepoints,
+            ),
+        ),
     }
 }
 
@@ -26,9 +73,9 @@ pub fn moveSelection(
     comptime dir: Direction,
 ) void {
     switch (self.selection) {
-        .main_menu => |*sel| sel.* = moveInnnerSelection(MainMenu, sel.*, dir),
-        .time_game_menu => |*sel| sel.* = moveInnnerSelection(TimeGameMenu, sel.*, dir),
-        .word_game_menu => |*sel| sel.* = moveInnnerSelection(WordGameMenu, sel.*, dir),
+        .main_menu => |*sel| sel.* = moveInnerSelection(MainMenu, sel.*, dir),
+        .time_game_menu => |*sel| sel.* = moveInnerSelection(TimeGameMenu, sel.*, dir),
+        .word_game_menu => |*sel| sel.* = moveInnerSelection(WordGameMenu, sel.*, dir),
     }
 }
 
@@ -63,11 +110,11 @@ fn renderMenu(
         .bg = .{ .index = 1 },
     };
 
-    for (menu_item_segment_offsets, 0..) |segment_offset, row| {
+    for (menu_item_segment_offsets, 0..) |segment_offset, row_offset| {
         std.debug.assert(list_item_window.width >= segment_offset.num_codepoints);
 
         const opts = vaxis.Window.PrintOptions{
-            .row_offset = @truncate(row),
+            .row_offset = @truncate(row_offset),
             .col_offset = (list_item_window.width -| segment_offset.num_codepoints) / 2,
             .wrap = .none,
         };
@@ -76,25 +123,26 @@ fn renderMenu(
     }
 }
 
-fn moveInnnerSelection(
-    Menu: type,
-    selection: Menu,
+pub const Direction = enum { up, down };
+
+fn moveInnerSelection(
+    InnerMenu: type,
+    selection: InnerMenu,
     comptime dir: Direction,
-) @TypeOf(selection) {
-    if (@typeInfo(Menu) != .@"enum") @compileError("cannot move non enum selection");
+) InnerMenu {
+    if (@typeInfo(InnerMenu) != .@"enum") @compileError("cannot move non enum selection");
 
-    const count = comptime @typeInfo(Menu).@"enum".fields.len;
-    if (count == 0) @compileError("menu enum cannot be empty");
-
+    const COUNT = @typeInfo(InnerMenu).@"enum".fields.len;
+    std.debug.assert(COUNT > 0);
     const delta = comptime switch (dir) {
-        .up => count - 1,
+        .up => COUNT - 1,
         .down => 1,
     };
 
-    return @enumFromInt((@intFromEnum(selection) + delta) % count);
+    const value: usize = (@as(u32, @intFromEnum(selection)) + delta) % COUNT;
+    std.debug.assert(value < COUNT);
+    return @enumFromInt(value);
 }
-
-pub const Direction = enum { up, down };
 
 pub const SuperMenu = union(enum) {
     main_menu: MainMenu,
@@ -105,15 +153,13 @@ pub const SuperMenu = union(enum) {
 pub const MainMenu = enum {
     time,
     word,
-    exit,
 
     pub const default: MainMenu = @enumFromInt(0);
 
     pub fn displayName(self: MainMenu) []const u8 {
         return switch (self) {
-            .exit => "quit",
             .time => "time",
-            .word => "words",
+            .word => "word",
         };
     }
 };

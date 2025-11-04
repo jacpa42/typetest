@@ -30,6 +30,9 @@ pub const Words = struct {
     /// rng type used to generate new words
     rng: WordRng = .{ .random = .init(DEFAULT_SEED) },
 
+    /// The maximum number of codepoints in a word
+    max_codepoints: u16,
+
     pub fn reseed(self: *@This(), seed: u64) void {
         switch (self.rng) {
             .sequential => |*idx| idx.* = seed,
@@ -60,7 +63,7 @@ pub const Words = struct {
         alloc: std.mem.Allocator,
         array_list: *std.ArrayList(u8),
         codepoint_limit: u16,
-    ) error{OutOfMemory}!u16 {
+    ) error{ OutOfMemory, EmptyLineNotAllowed }!u16 {
         array_list.clearRetainingCapacity();
 
         var next_word = self.randomWord();
@@ -73,6 +76,8 @@ pub const Words = struct {
             total_codepoints += next_word.num_codepoints + 1; // plus 1 for space
             next_word = self.randomWord();
         }
+
+        if (array_list.items.len == 0) return error.EmptyLineNotAllowed;
 
         return total_codepoints;
     }
@@ -87,27 +92,34 @@ pub const Words = struct {
         gpa: std.mem.Allocator,
         word_buf: []const u8,
     ) error{ OutOfMemory, InvalidUtf8, EmptyFile }!@This() {
+        var largest_word: u16 = 0;
         var words = try std.ArrayList(Word).initCapacity(gpa, 0);
         errdefer words.deinit(gpa);
 
         var word_iterator = std.mem.splitAny(u8, word_buf, " \n\r\t");
+        word_iter: while (word_iterator.next()) |word_bytes| {
+            const view = try std.unicode.Utf8View.init(word_bytes);
 
-        while (word_iterator.next()) |word_bytes| {
-            const num_codepoints: usize =
-                std.unicode.utf8CountCodepoints(word_bytes) catch return error.InvalidUtf8;
-
-            // Include words who are not too big or small
-            if (0 < num_codepoints and num_codepoints < MAX_WORD_SIZE) {
-                try words.append(gpa, .{
-                    .buf = word_bytes,
-                    .num_codepoints = @truncate(num_codepoints),
-                });
+            var utf8_iter = view.iterator();
+            var num_codepoints: u16 = 0;
+            while (utf8_iter.nextCodepointSlice() != null) : (num_codepoints += 1) {
+                if (num_codepoints > MAX_WORD_SIZE) continue :word_iter;
             }
+            if (num_codepoints == 0) continue :word_iter;
+
+            largest_word = @max(largest_word, num_codepoints);
+            try words.append(gpa, .{
+                .buf = word_bytes,
+                .num_codepoints = num_codepoints,
+            });
         }
 
         if (words.items.len == 0) return error.EmptyFile;
 
-        return @This(){ .words = try words.toOwnedSlice(gpa) };
+        return @This(){
+            .words = try words.toOwnedSlice(gpa),
+            .max_codepoints = largest_word,
+        };
     }
 
     test "Words parsing: empty input" {

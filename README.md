@@ -5,9 +5,11 @@
 1. Make sure [zig](https://ziglang.org/learn/getting-started/) and [git](https://git-scm.com/install/) are installed and executable.
 2. Clone and build:
 ```sh
-git clone --depth=1 https://github.com/jacpa42/typetest
-cd typetest
-zig build --release=fast
+You need to provide input words via stdin or via a file with --word-file
+
+  -h, --help              Display this help and exit
+  -s, --seed <seed>       Seed to use for rng (default is a random seed)
+  -f, --word-file <file>  File to select words from (ignored if stdin is not empty)
 ```
 
 ## Usage

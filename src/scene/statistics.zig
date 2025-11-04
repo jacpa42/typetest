@@ -16,8 +16,11 @@ pub fn renderStatistics(
     COUNT: comptime_int,
     statistics: *const [COUNT]Statistic,
     data: super.RenderData,
-) error{ WindowTooSmall, OutOfMemory }!void {
-    const win = layout.runningStatisticsWindow(try layout.gameWindow(data.root_window));
+) error{ EmptyLineNotAllowed, OutOfMemory }!void {
+    const win = layout.runningStatisticsWindow(try layout.gameWindow(
+        data.root_window,
+        data.words.max_codepoints,
+    ));
 
     const child_win_width = win.width / COUNT;
     var x_off: u16 = 0;

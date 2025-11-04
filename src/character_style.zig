@@ -50,3 +50,14 @@ pub const game_window_border = vaxis.Style{
 pub const text_box_window_border = vaxis.Style{
     .fg = .{ .index = 4 },
 };
+
+/// The style for the cursor
+pub const header_style1 = vaxis.Style{
+    .fg = .{ .index = 1 },
+};
+
+/// The style for the cursor
+pub const header_style2 = vaxis.Style{
+    .dim = true,
+    .fg = .{ .index = 1 },
+};

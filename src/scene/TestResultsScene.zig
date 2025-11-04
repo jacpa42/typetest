@@ -14,8 +14,11 @@ test_duration_seconds: f32,
 pub fn render(
     self: *const @This(),
     data: super.RenderData,
-) error{ WindowTooSmall, OutOfMemory }!void {
-    const game_window = try layout.gameWindow(data.root_window);
+) error{ EmptyLineNotAllowed, OutOfMemory }!void {
+    const game_window = try layout.gameWindow(
+        data.root_window,
+        data.words.max_codepoints,
+    );
     const middle_box = layout.resultsWindow(game_window);
 
     const statistics: [3]stat.Statistic = .{

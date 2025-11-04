@@ -62,8 +62,11 @@ pub fn reinit(
 pub fn render(
     self: *TimeScene,
     data: super.RenderData,
-) error{ WindowTooSmall, OutOfMemory }!void {
-    const game_window = try layout.gameWindow(data.root_window);
+) error{ EmptyLineNotAllowed, OutOfMemory }!void {
+    const game_window = try layout.gameWindow(
+        data.root_window,
+        data.words.max_codepoints,
+    );
 
     self.character_buffer.render(layout.charBufWindow(game_window));
 

@@ -12,7 +12,7 @@ pub const Scene = union(enum) {
     pub fn render(
         self: *Scene,
         data: RenderData,
-    ) error{ WindowTooSmall, OutOfMemory }!void {
+    ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
         switch (self.*) {
             .menu_scene => |*sc| try sc.render(data),
             .time_scene => |*sc| try sc.render(data),
@@ -25,6 +25,8 @@ pub const Scene = union(enum) {
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
     frame_counter: u64,
+    /// In frames
+    animation_duration: u64,
     root_window: vaxis.Window,
     words: *Words,
     /// Several recording of the frame time

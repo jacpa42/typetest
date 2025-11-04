@@ -12,11 +12,13 @@ const MIN_TIME_GAME_DURATION = 1;
 const MAX_TIME_GAME_DURATION = std.math.maxInt(u32);
 
 const DEFAULT_WORD_COUNT = 50;
+const DEFAULT_ANIMIATION_DURATION = 500;
 
 const params = clap.parseParamsComptime(
     \\-h, --help             Display this help and exit
     \\-s, --seed <seed>      Seed to use for rng (default is a random seed)
     \\-f, --word-file <file> File to select words from (ignored if stdin is not empty)
+    \\-a, --duration <dur>   Duration of the title screen animation in frames
 );
 
 /// All the relevant stuff we need after argument parsing
@@ -24,18 +26,29 @@ pub const Args = struct {
     word_buffer: []const u8,
     words: Words,
     seed: u64,
+    animation_duration: u64,
 };
 
 pub fn parseArgs(alloc: std.mem.Allocator) !Args {
-    var res = try clap.parse(
+    var res = clap.parse(
         clap.Help,
         &params,
         .{
             .file = clap.parsers.string,
             .seed = clap.parsers.int(u64, 10),
+            .dur = clap.parsers.int(u64, 10),
         },
         .{ .allocator = alloc },
-    );
+    ) catch |err| {
+        var buf: [1024]u8 = undefined;
+        const errname = @errorName(err);
+        const errmsg = std.fmt.bufPrint(
+            &buf,
+            "An unexpected error has occured during argument parsing: {s}\n\n",
+            .{errname},
+        ) catch std.process.exit(1);
+        printHelp(errmsg);
+    };
     defer res.deinit();
 
     if (res.args.help > 0) printHelp("");
@@ -61,9 +74,21 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         printHelp(info);
     };
 
+    var animation_duration: u64 = undefined;
+    if (res.args.duration) |d| {
+        if (d <= 0) {
+            printHelp("The animation duration must be greater than 0 :)\n\n");
+        } else {
+            animation_duration = d;
+        }
+    } else {
+        animation_duration = DEFAULT_ANIMIATION_DURATION;
+    }
+
     return Args{
         .word_buffer = word_buffer,
         .words = words,
+        .animation_duration = animation_duration,
         .seed = res.args.seed orelse (@bitCast(std.time.microTimestamp() *% 115578717622022981)),
     };
 }
