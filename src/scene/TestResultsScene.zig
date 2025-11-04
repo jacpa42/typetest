@@ -4,8 +4,11 @@ const layout = @import("window_layout.zig");
 const character_style = @import("../character_style.zig");
 const super = @import("../scene.zig");
 const util = @import("util.zig");
+const stat = @import("statistics.zig");
 
 average_wpm: f32,
+peak_wpm: f32,
+test_duration_seconds: f32,
 
 /// Clears screen and renders the current state.
 pub fn render(
@@ -15,25 +18,40 @@ pub fn render(
     const game_window = try layout.gameWindow(data.root_window);
     const middle_box = layout.resultsWindow(game_window);
 
-    const col_offset = (middle_box.width -| @as(u16, @truncate(10))) / 2;
+    const statistics: [3]stat.Statistic = .{
+        .{ .label = "average words per minute: ", .value = self.average_wpm },
+        .{ .label = "peak words per minute: ", .value = self.peak_wpm },
+        .{ .label = "test duration: ", .value = self.average_wpm },
+    };
 
-    const print_buf = try data.frame_print_buffer.addManyAsSlice(
-        data.alloc,
-        util.requiredBufSize(u32),
-    );
+    var row = (middle_box.height -| @as(u16, @truncate(statistics.len))) / 2;
 
-    const len = std.fmt.printInt(print_buf, @as(u32, @intFromFloat(self.average_wpm)), 10, .lower, .{});
-    // pop off the last couple values we dont use
-    data.frame_print_buffer.items.len -= (print_buf.len - len);
+    for (&statistics) |statistic| {
+        defer row += 1;
 
-    _ = middle_box.print(&.{
-        vaxis.Segment{
-            .text = "average wpm: ",
-            .style = character_style.statistic_label,
-        },
-        vaxis.Segment{
-            .text = print_buf[0..len],
-            .style = character_style.statistic_value,
-        },
-    }, .{ .col_offset = col_offset });
+        const buf = try data.frame_print_buffer.addManyAsSliceBounded(util.REQUIRED_NUM_BUF_SIZE);
+
+        const print_buf =
+            std.fmt.bufPrint(buf, "{d:.2}", .{statistic.value}) catch return error.OutOfMemory;
+
+        // pop off the last couple values we dont use
+        data.frame_print_buffer.items.len -= (buf.len - print_buf.len);
+
+        std.debug.assert(std.unicode.utf8ValidateSlice(statistic.label));
+        const label_len = std.unicode.utf8CountCodepoints(statistic.label) catch unreachable;
+
+        _ = middle_box.print(&.{
+            vaxis.Segment{
+                .text = statistic.label,
+                .style = character_style.statistic_label,
+            },
+            vaxis.Segment{
+                .text = print_buf,
+                .style = character_style.statistic_value,
+            },
+        }, .{
+            .col_offset = (middle_box.width -| @as(u16, @truncate(label_len + print_buf.len))) / 2,
+            .row_offset = row,
+        });
+    }
 }

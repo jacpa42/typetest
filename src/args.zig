@@ -14,18 +14,16 @@ const MAX_TIME_GAME_DURATION = std.math.maxInt(u32);
 const DEFAULT_WORD_COUNT = 50;
 
 const params = clap.parseParamsComptime(
-    \\-h, --help              Display this help and exit
-    \\-s, --seed       <seed> Seed to use for rng
-    \\-f, --word-file  <file> File to select words from (Ignored if stdin is not empty)
-    \\
-    \\Each word in the input is seperated by whitespace.
+    \\-h, --help             Display this help and exit
+    \\-s, --seed <seed>      Seed to use for rng (default is a random seed)
+    \\-f, --word-file <file> File to select words from (ignored if stdin is not empty)
 );
 
 /// All the relevant stuff we need after argument parsing
 pub const Args = struct {
     word_buffer: []const u8,
     words: Words,
-    seed: u64 = 0,
+    seed: u64,
 };
 
 pub fn parseArgs(alloc: std.mem.Allocator) !Args {
@@ -66,7 +64,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
     return Args{
         .word_buffer = word_buffer,
         .words = words,
-        .seed = res.args.seed orelse 0,
+        .seed = res.args.seed orelse (@bitCast(std.time.microTimestamp() *% 115578717622022981)),
     };
 }
 

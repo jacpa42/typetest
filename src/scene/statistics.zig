@@ -3,10 +3,9 @@ const vaxis = @import("vaxis");
 const super = @import("../scene.zig");
 const character_style = @import("../character_style.zig");
 const layout = @import("window_layout.zig");
-const now = @import("util.zig").now;
+const util = @import("util.zig");
 
-const REQUIRED_BUF_SIZE: usize = std.math.log10_int(@as(StatisticValue, std.math.maxInt(StatisticValue))) + 1;
-const StatisticValue = u32;
+const StatisticValue = f32;
 pub const Statistic = struct {
     label: []const u8,
     value: StatisticValue,
@@ -26,14 +25,13 @@ pub fn renderStatistics(
     inline for (statistics) |stat| {
         defer x_off += child_win_width;
 
-        const print_buf = try data.frame_print_buffer.addManyAsSlice(
-            data.alloc,
-            REQUIRED_BUF_SIZE,
+        const buf = try data.frame_print_buffer.addManyAsSliceBounded(
+            util.REQUIRED_NUM_BUF_SIZE,
         );
 
-        const len = std.fmt.printInt(print_buf, stat.value, 10, .lower, .{});
+        const print_buf = std.fmt.bufPrint(buf, "{d:.0}", .{stat.value}) catch return error.OutOfMemory;
         // pop off the last couple values we dont use
-        data.frame_print_buffer.items.len -= (print_buf.len - len);
+        data.frame_print_buffer.items.len -= (buf.len - print_buf.len);
 
         const statistic_win = win.child(.{
             .height = win.height,
@@ -47,7 +45,7 @@ pub fn renderStatistics(
                 .style = character_style.statistic_label,
             },
             vaxis.Segment{
-                .text = print_buf[0..len],
+                .text = print_buf,
                 .style = character_style.statistic_value,
             },
         }, .{});

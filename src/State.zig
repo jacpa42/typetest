@@ -31,6 +31,8 @@ alloc: std.mem.Allocator,
 /// they must just alloc the memory they need in here.
 ///
 /// Gets cleared the end of each frame.
+///
+/// Initalized with a static buffer!
 frame_print_buffer: std.ArrayList(u8),
 
 pub fn init(alloc: std.mem.Allocator) !@This() {
@@ -39,7 +41,7 @@ pub fn init(alloc: std.mem.Allocator) !@This() {
         .alloc = alloc,
         .words = args.words,
         .seed = args.seed,
-        .frame_print_buffer = .empty,
+        .frame_print_buffer = try .initCapacity(alloc, 1024 * 1024),
     };
 }
 
@@ -48,7 +50,6 @@ pub inline fn render(
     window: vaxis.Window,
 ) error{ WindowTooSmall, OutOfMemory }!void {
     return self.current_scene.render(.{
-        .alloc = self.alloc,
         .words = &self.words,
         .frame_counter = self.frame_counter,
         .frame_timings_ns = &self.frame_timings,

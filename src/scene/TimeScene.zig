@@ -21,6 +21,8 @@ mistake_counter: u32 = 0,
 /// How many right keys the user has pressed
 correct_counter: u32 = 0,
 
+peak_wpm: f32 = 0.0,
+
 /// A scrollable character buffer.
 character_buffer: CharacterBuffer,
 
@@ -58,22 +60,20 @@ pub fn reinit(
 
 /// Clears screen and renders the current state.
 pub fn render(
-    self: *const TimeScene,
+    self: *TimeScene,
     data: super.RenderData,
 ) error{ WindowTooSmall, OutOfMemory }!void {
     const game_window = try layout.gameWindow(data.root_window);
 
     self.character_buffer.render(layout.charBufWindow(game_window));
 
-    const fps = @as(u32, @intFromFloat(
-        util.framesPerSecond(data.frame_timings_ns),
-    ));
-    const wpm: u32 = @as(u32, @intFromFloat(util.wordsPerMinute(
+    const fps = util.framesPerSecond(data.frame_timings_ns);
+    const wpm = util.wordsPerMinute(
         self.correct_counter,
         self.mistake_counter,
         self.test_start,
-    )));
-    const time_left = @as(u32, @truncate(
+    );
+    const time_left = @as(f32, @floatFromInt(
         self.timeLeftNanoSeconds() / 1_000_000_000,
     ));
     const num_statistics = 3;
@@ -86,6 +86,8 @@ pub fn render(
         },
         data,
     );
+
+    self.peak_wpm = @max(self.peak_wpm, wpm);
 }
 
 pub fn deinit(
@@ -140,6 +142,8 @@ pub fn isComplete(self: *const TimeScene) ?TestResultsScene {
     if (util.now().since(test_start) <= self.test_duration_ns) return null;
 
     return TestResultsScene{
+        .peak_wpm = self.peak_wpm,
+        .test_duration_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) / 1e9,
         .average_wpm = util.wordsPerMinute(
             self.correct_counter,
             self.mistake_counter,

@@ -10,7 +10,7 @@ pub const Scene = union(enum) {
     test_results_scene: @import("scene/TestResultsScene.zig"),
 
     pub fn render(
-        self: *const Scene,
+        self: *Scene,
         data: RenderData,
     ) error{ WindowTooSmall, OutOfMemory }!void {
         switch (self.*) {
@@ -24,8 +24,6 @@ pub const Scene = union(enum) {
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
-    alloc: std.mem.Allocator,
-
     frame_counter: u64,
     root_window: vaxis.Window,
     words: *Words,
