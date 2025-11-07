@@ -1,5 +1,9 @@
 # TypeTest
 
+## Installation
+### AUR
+todo
+
 ## Building
 
 1. Make sure [zig](https://ziglang.org/learn/getting-started/) and [git](https://git-scm.com/install/) are installed and executable.
