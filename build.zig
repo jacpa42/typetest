@@ -22,13 +22,13 @@ pub fn build(b: *std.Build) !void {
             setupReleaseStep(b, release);
         } else {
             release.dependOn(&b.addFail(b.fmt(
-                "error: git tag does not match zon package version (zon: '{s}', git: '{s}')",
+                "git tag does not match zon package version (zon: '{s}', git: '{s}')",
                 .{ version, git_version.tag[1..] },
             )).step);
         }
     } else {
         release.dependOn(&b.addFail(
-            "error: git tag missing, cannot make release builds",
+            "git tag missing, cannot make release builds",
         ).step);
     }
 }
