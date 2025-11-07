@@ -47,6 +47,30 @@ pub fn gameWindow(
     });
 }
 
+/// The child window where our entire game goes
+pub fn textInputWindow(
+    game_window: Window,
+    user_input_size: u16,
+) Window {
+    const text_input_window_height = 1 + BORDER_SIZE;
+    const text_input_window_width = @min(
+        user_input_size + BORDER_SIZE,
+        game_window.width -| BORDER_SIZE,
+    );
+
+    return game_window.child(.{
+        .x_off = (game_window.width - text_input_window_width) / 2,
+        .y_off = (game_window.height - text_input_window_height) / 2,
+        .width = text_input_window_width,
+        .height = text_input_window_height,
+        .border = .{
+            .style = character_styles.text_box_window_border,
+            .where = .all,
+            .glyphs = .single_rounded,
+        },
+    });
+}
+
 /// Top chunk of the `root_window`
 pub fn headerWindow(
     root_window: Window,

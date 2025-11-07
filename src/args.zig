@@ -8,18 +8,17 @@ const MAX_FILE_SIZE = 512 * KIB;
 const MIN_WORD_COUNT = 1;
 const MAX_WORD_COUNT = std.math.maxInt(u32);
 
-const MIN_TIME_GAME_DURATION = 1;
-const MAX_TIME_GAME_DURATION = std.math.maxInt(u32);
-
 const DEFAULT_WORD_COUNT = 50;
 const DEFAULT_ANIMIATION_DURATION = 500;
+const DEFAULT_FPS = 60;
 
 const params = clap.parseParamsComptime(
     \\-h, --help                 Display this help and exit
     \\-s, --seed <seed>          Seed to use for rng (default is a random seed)
-    \\-f, --word-file <file>     File to select words from (ignored if stdin is not empty)
+    \\-w, --word-file <file>     File to select words from (ignored if stdin is not empty)
     \\-a, --duration <dur>       Duration of the title screen animation in frames
-    \\-c, --cursor-style <style> Cursor style
+    \\-c, --cursor-shape <shape> Cursor style
+    \\-f, --fps <fps>            Desired frame rate for the game. Default is 60.
 );
 
 const vaxis = @import("vaxis");
@@ -29,8 +28,9 @@ pub const Args = struct {
     word_buffer: []const u8,
     words: Words,
     seed: u64,
+    fps: u64,
     animation_duration: u64,
-    cursor_style: vaxis.Cell.CursorShape,
+    cursor_shape: vaxis.Cell.CursorShape,
 };
 
 pub fn parseArgs(alloc: std.mem.Allocator) !Args {
@@ -46,7 +46,8 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
             .file = clap.parsers.string,
             .seed = clap.parsers.int(u64, 10),
             .dur = clap.parsers.int(u64, 10),
-            .style = clap.parsers.enumeration(vaxis.Cell.CursorShape),
+            .shape = clap.parsers.enumeration(vaxis.Cell.CursorShape),
+            .fps = parsers.int(u64, 24, std.math.maxInt(u64)),
         },
         .{ .allocator = oom_allocator },
     ) catch |err| {
@@ -96,7 +97,8 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         .words = words,
         .animation_duration = animation_duration,
         .seed = res.args.seed orelse (@bitCast(std.time.microTimestamp() *% 115578717622022981)),
-        .cursor_style = res.args.@"cursor-style" orelse vaxis.Cell.CursorShape.default,
+        .cursor_shape = res.args.@"cursor-shape" orelse vaxis.Cell.CursorShape.default,
+        .fps = res.args.fps orelse DEFAULT_FPS,
     };
 }
 
@@ -121,8 +123,8 @@ fn printHelp(info: []const u8) noreturn {
     std.process.exit(0);
 }
 
-const parsers = struct {
-    fn int(comptime T: type, min: comptime_int, max: comptime_int) fn (in: []const u8) std.fmt.ParseIntError!T {
+pub const parsers = struct {
+    pub fn int(comptime T: type, min: comptime_int, max: comptime_int) fn (in: []const u8) std.fmt.ParseIntError!T {
         return struct {
             fn parse(in: []const u8) std.fmt.ParseIntError!T {
                 const value = switch (@typeInfo(T).int.signedness) {

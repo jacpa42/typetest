@@ -8,22 +8,21 @@ pub const Scene = union(enum) {
     time_scene: @import("scene/TimeScene.zig"),
     word_scene: @import("scene/WordScene.zig"),
     test_results_scene: @import("scene/TestResultsScene.zig"),
+    custom_game_selection_scene: @import("scene/CustomGameSelectionScene.zig"),
 
     pub fn render(
         self: *Scene,
         data: RenderData,
     ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
         switch (self.*) {
-            .menu_scene => |*sc| try sc.render(data),
-            .time_scene => |*sc| try sc.render(data),
-            .test_results_scene => |*sc| try sc.render(data),
-            .word_scene => |*sc| try sc.render(data),
+            inline else => |*sc| try sc.render(data),
         }
     }
 };
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
 pub const RenderData = struct {
+    alloc: std.mem.Allocator,
     frame_counter: u64,
     /// In frames
     animation_duration: u64,

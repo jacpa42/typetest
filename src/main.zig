@@ -9,8 +9,6 @@ const action = @import("action.zig");
 const now = @import("scene/util.zig").now;
 const State = @import("State.zig");
 
-// todo: There is a bug somewhere in the time game results screen
-
 const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
@@ -48,7 +46,7 @@ pub fn main() !void {
 
     game_loop: while (true) {
         const frame_start = now();
-        defer game_state.tickFrame(frame_start, 60);
+        defer game_state.tickFrame(frame_start);
 
         while (loop.tryEvent()) |event| {
             switch (event) {
@@ -70,16 +68,17 @@ pub fn main() !void {
 
         switch (game_state.current_scene) {
             .time_scene => |*time_scene| if (time_scene.isComplete()) |results| {
-                time_scene.deinit(alloc);
+                _ = game_state.scene_arena.reset(.retain_capacity);
                 game_state.current_scene = scene.Scene{ .test_results_scene = results };
             },
 
             .word_scene => |*word_scene| if (word_scene.isComplete()) |results| {
-                word_scene.deinit(alloc);
+                _ = game_state.scene_arena.reset(.retain_capacity);
                 game_state.current_scene = scene.Scene{ .test_results_scene = results };
             },
             .menu_scene => {},
             .test_results_scene => {},
+            .custom_game_selection_scene => {},
         }
 
         win.clear();

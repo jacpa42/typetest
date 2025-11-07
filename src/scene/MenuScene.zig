@@ -165,37 +165,41 @@ pub const MainMenu = enum {
 };
 
 pub const TimeGameMenu = enum {
-    time15,
-    time30,
-    time60,
+    time015,
+    time030,
+    time060,
     time120,
+    _custom,
 
     pub const default: TimeGameMenu = @enumFromInt(0);
 
     pub fn displayName(self: TimeGameMenu) []const u8 {
         return switch (self) {
-            .time15 => "  15s",
-            .time30 => "  30s",
-            .time60 => "  60s",
+            .time015 => "  15s",
+            .time030 => "  30s",
+            .time060 => "  60s",
             .time120 => " 120s",
+            ._custom => "custom",
         };
     }
 };
 
 pub const WordGameMenu = enum {
-    words10,
-    words25,
-    words50,
+    words010,
+    words025,
+    words050,
     words100,
+    __custom,
 
     pub const default: WordGameMenu = @enumFromInt(0);
 
     pub fn displayName(self: WordGameMenu) []const u8 {
         return switch (self) {
-            .words10 => "󰼭  10",
-            .words25 => "󰼭  25",
-            .words50 => "󰼭  50",
-            .words100 => "󰼭 100",
+            .words010 => "󰼭   10",
+            .words025 => "󰼭   25",
+            .words050 => "󰼭   50",
+            .words100 => "󰼭  100",
+            .__custom => "custom",
         };
     }
 };

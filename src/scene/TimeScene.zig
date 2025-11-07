@@ -59,10 +59,7 @@ pub fn render(
     );
 
     const fps = util.framesPerSecond(data.frame_timings_ns);
-    const wpm = util.wordsPerMinute(
-        self.correct_counter,
-        self.test_start,
-    );
+    const wpm = util.wordsPerMinute(self.correct_counter, self.test_start);
     const time_left = @as(f32, @floatFromInt(
         self.timeLeftNanoSeconds() / 1_000_000_000,
     ));
@@ -135,10 +132,7 @@ pub fn isComplete(self: *const TimeScene) ?TestResultsScene {
         .peak_wpm = self.peak_wpm,
         .test_duration_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) / 1e9,
         .average_accuracy = util.accuracy(self.correct_counter, self.mistake_counter),
-        .average_wpm = util.wordsPerMinute(
-            self.correct_counter,
-            test_start,
-        ),
+        .average_wpm = util.wordsPerMinute(self.correct_counter, test_start),
     };
 }
 

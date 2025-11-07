@@ -41,7 +41,7 @@ pub const game_window_border = vaxis.Style{
 };
 
 pub const text_box_window_border = vaxis.Style{
-    .fg = .{ .index = 4 },
+    .fg = .{ .index = 3 },
 };
 
 /// The style for the cursor
@@ -53,4 +53,18 @@ pub const header_style1 = vaxis.Style{
 pub const header_style2 = vaxis.Style{
     .dim = true,
     .fg = .{ .index = 1 },
+};
+
+/// The style for custom time game prompt
+pub const custom_time_game_prompt = vaxis.Style{
+    .bold = true,
+    .italic = true,
+    .fg = .{ .index = 5 },
+};
+
+/// The style for custom time game prompt
+pub const custom_word_game_prompt = vaxis.Style{
+    .bold = true,
+    .italic = true,
+    .fg = .{ .index = 6 },
 };

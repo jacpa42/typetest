@@ -26,7 +26,7 @@ pub fn render(
         .{ .label = "average words per minute: ", .value = self.average_wpm },
         .{ .label = "peak words per minute: ", .value = self.peak_wpm },
         .{ .label = "accuracy: ", .value = self.average_accuracy },
-        .{ .label = "test duration: ", .value = self.average_wpm },
+        .{ .label = "test duration: ", .value = self.test_duration_seconds },
     };
 
     var row = (middle_box.height -| @as(u16, @truncate(statistics.len))) / 2;

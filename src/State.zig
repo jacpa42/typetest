@@ -27,6 +27,9 @@ current_scene: scene.Scene = .{ .menu_scene = .{} },
 words: Words,
 /// Game seed
 seed: u64,
+fps: u64,
+animation_duration: u64,
+cursor_shape: vaxis.Cell.CursorShape,
 
 /// I have issues when using stack buffers for my render functions,
 /// so I pass to to each function which needs to render stuff and
@@ -38,24 +41,29 @@ frame_print_buffer: std.ArrayList(u8),
 pub fn init(alloc: std.mem.Allocator) !@This() {
     const args = try parseArgs(alloc);
     return @This(){
-        .alloc = alloc,
+        .scene_arena = std.heap.ArenaAllocator.init(alloc),
+        .frame_print_buffer = try .initCapacity(alloc, 1024),
         .words = args.words,
         .seed = args.seed,
-        .frame_print_buffer = .empty,
+        .fps = args.fps,
+        .animation_duration = args.animation_duration,
+        .cursor_shape = args.cursor_shape,
     };
 }
 
 pub inline fn render(
     self: *@This(),
     window: vaxis.Window,
-) error{ WindowTooSmall, OutOfMemory }!void {
+) error{ EmptyLineNotAllowed, OutOfMemory }!void {
     return self.current_scene.render(.{
-        .alloc = self.alloc,
+        .alloc = self.scene_arena.allocator(),
         .words = &self.words,
         .frame_counter = self.frame_counter,
         .frame_timings_ns = &self.frame_timings,
         .root_window = window,
         .frame_print_buffer = &self.frame_print_buffer,
+        .animation_duration = self.animation_duration,
+        .cursor_shape = self.cursor_shape,
     });
 }
 
@@ -66,9 +74,8 @@ pub inline fn render(
 pub fn tickFrame(
     self: *@This(),
     frame_start: std.time.Instant,
-    desired_fps: u64,
 ) void {
-    const frame_delay_ns: u64 = @as(u64, 1e9) / desired_fps;
+    const frame_delay_ns: u64 = @as(u64, 1e9) / self.fps;
     const this_frame_time = now().since(frame_start);
 
     self.frame_counter += 1;
@@ -86,6 +93,7 @@ pub fn processKeyPress(
     const menuEventHandler = action.MenuSceneAction.processKeydown;
     const gameEventHandler = action.GameSceneAction.processKeydown;
     const resultsEventHandler = action.ResultsSceneAction.processKeydown;
+    const customGameEventHandler = action.CustomGameSelectionAction.processKeydown;
 
     switch (self.current_scene) {
         .menu_scene => |*supermenu| switch (menuEventHandler(key)) {
@@ -101,22 +109,30 @@ pub fn processKeyPress(
             .select => switch (supermenu.selection) {
                 .main_menu => |inner_menu| {
                     switch (inner_menu) {
-                        .exit => return .graceful_exit,
                         .time => supermenu.selection = .{ .time_game_menu = .default },
                         .word => supermenu.selection = .{ .word_game_menu = .default },
                     }
                 },
                 .time_game_menu => |inner_menu| {
                     const test_duration_ns: u64 = switch (inner_menu) {
-                        .time15 => 15 * 1e9,
-                        .time30 => 30 * 1e9,
-                        .time60 => 60 * 1e9,
+                        .time015 => 15 * 1e9,
+                        .time030 => 30 * 1e9,
+                        .time060 => 60 * 1e9,
                         .time120 => 120 * 1e9,
+                        ._custom => {
+                            _ = self.scene_arena.reset(.retain_capacity);
+                            self.current_scene = .{ .custom_game_selection_scene = .init(
+                                "Game duration: ",
+                                .{ .time = 0 },
+                            ) };
+                            return .continue_game;
+                        },
                     };
 
+                    _ = self.scene_arena.reset(.retain_capacity);
                     self.current_scene = .{
                         .time_scene = try .init(
-                            self.alloc,
+                            self.scene_arena.allocator(),
                             &self.words,
                             codepoint_limit,
                             test_duration_ns,
@@ -125,15 +141,24 @@ pub fn processKeyPress(
                 },
                 .word_game_menu => |inner_menu| {
                     const total_words: u32 = switch (inner_menu) {
-                        .words10 => 10,
-                        .words25 => 25,
-                        .words50 => 50,
+                        .words010 => 10,
+                        .words025 => 25,
+                        .words050 => 50,
                         .words100 => 100,
+                        .__custom => {
+                            _ = self.scene_arena.reset(.retain_capacity);
+                            self.current_scene = .{ .custom_game_selection_scene = .init(
+                                "Number of words: ",
+                                .{ .word = 0 },
+                            ) };
+                            return .continue_game;
+                        },
                     };
 
+                    _ = self.scene_arena.reset(.retain_capacity);
                     self.current_scene = .{
                         .word_scene = try .init(
-                            self.alloc,
+                            self.scene_arena.allocator(),
                             &self.words,
                             codepoint_limit,
                             total_words,
@@ -142,26 +167,67 @@ pub fn processKeyPress(
                 },
             },
         },
+        .custom_game_selection_scene => |*custom_game| switch (customGameEventHandler(key)) {
+            .none => return .continue_game,
+            .quit => return .graceful_exit,
+            .goback => {
+                _ = self.scene_arena.reset(.retain_capacity);
+                switch (custom_game.custom_game_type) {
+                    .time => self.current_scene = .{
+                        .menu_scene = .{ .selection = .{ .word_game_menu = .default } },
+                    },
+                    .word => self.current_scene = .{
+                        .menu_scene = .{ .selection = .{ .time_game_menu = .default } },
+                    },
+                }
+            },
+            .select => {
+                _ = self.scene_arena.reset(.retain_capacity);
+                switch (custom_game.custom_game_type) {
+                    .time => |time_seconds| self.current_scene = .{
+                        .time_scene = try .init(
+                            self.scene_arena.allocator(),
+                            &self.words,
+                            codepoint_limit,
+                            @as(u64, @intCast(time_seconds)) *| 1_000_000_000,
+                        ),
+                    },
+                    .word => |num_words| self.current_scene = .{
+                        .word_scene = try .init(
+                            self.scene_arena.allocator(),
+                            &self.words,
+                            codepoint_limit,
+                            num_words,
+                        ),
+                    },
+                }
+            },
+            .undo_key_press => custom_game.processUndo(),
+            .undo_word => custom_game.processUndoWord(),
+            .key_press => |cp| custom_game.processKeyPress(cp),
+        },
         .test_results_scene => switch (resultsEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
-            .return_to_menu => self.current_scene = .{ .menu_scene = .{} },
+            .return_to_menu => {
+                _ = self.scene_arena.reset(.retain_capacity);
+                self.current_scene = .{ .menu_scene = .{} };
+            },
         },
         .time_scene => |*time_scene| switch (gameEventHandler(key)) {
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
-                time_scene.deinit(self.alloc);
-                self.current_scene = .{ .menu_scene = .{
-                    .selection = .{ .time_game_menu = .default },
-                } };
+                _ = self.scene_arena.reset(.retain_capacity);
+                self.current_scene = .{ .menu_scene = .{} };
             },
             .new_random_game => {
                 self.seed = @bitCast(std.time.microTimestamp());
                 self.words.reseed(self.seed);
 
-                try time_scene.reinit(
-                    self.alloc,
+                _ = self.scene_arena.reset(.retain_capacity);
+                time_scene.* = try .init(
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
@@ -170,8 +236,9 @@ pub fn processKeyPress(
             .restart_current_game => {
                 self.words.reseed(self.seed);
 
-                try time_scene.reinit(
-                    self.alloc,
+                _ = self.scene_arena.reset(.retain_capacity);
+                time_scene.* = try .init(
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
                     time_scene.test_duration_ns,
@@ -181,7 +248,7 @@ pub fn processKeyPress(
             .undo_word => time_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try time_scene.processKeyPress(
-                    self.alloc,
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
                     codepoint,
@@ -192,37 +259,37 @@ pub fn processKeyPress(
             .none => return .continue_game,
             .quit => return .graceful_exit,
             .return_to_menu => {
-                word_scene.deinit(self.alloc);
-                self.current_scene = .{ .menu_scene = .{
-                    .selection = .{ .word_game_menu = .default },
-                } };
+                _ = self.scene_arena.reset(.retain_capacity);
+                self.current_scene = .{ .menu_scene = .{} };
             },
             .new_random_game => {
                 self.seed = @bitCast(std.time.microTimestamp());
                 self.words.reseed(self.seed);
 
-                try word_scene.reinit(
-                    self.alloc,
+                _ = self.scene_arena.reset(.retain_capacity);
+                word_scene.* = try .init(
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
-                    word_scene.words_remaining,
+                    word_scene.initial_words,
                 );
             },
             .restart_current_game => {
                 self.words.reseed(self.seed);
 
-                try word_scene.reinit(
-                    self.alloc,
+                _ = self.scene_arena.reset(.retain_capacity);
+                word_scene.* = try .init(
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
-                    word_scene.words_remaining,
+                    word_scene.initial_words,
                 );
             },
             .undo_key_press => word_scene.processUndo(),
             .undo_word => word_scene.processUndoWord(),
             .key_press => |codepoint| {
                 try word_scene.processKeyPress(
-                    self.alloc,
+                    self.scene_arena.allocator(),
                     &self.words,
                     codepoint_limit,
                     codepoint,
@@ -235,13 +302,7 @@ pub fn processKeyPress(
 }
 
 pub fn deinit(self: *@This()) void {
-    self.words.deinit(self.alloc);
-    self.frame_print_buffer.deinit(self.alloc);
-
-    switch (self.current_scene) {
-        .menu_scene => {},
-        .test_results_scene => {},
-        .time_scene => |*time_scene| time_scene.deinit(self.alloc),
-        .word_scene => |*word_scene| word_scene.deinit(self.alloc),
-    }
+    self.words.deinit(self.scene_arena.child_allocator);
+    self.frame_print_buffer.deinit(self.scene_arena.child_allocator);
+    self.scene_arena.deinit();
 }

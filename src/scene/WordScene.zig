@@ -14,6 +14,8 @@ const WordsScene = @This();
 test_start: ?std.time.Instant = null,
 
 /// The time from when the test starts to the end of the test in nanoseconds
+initial_words: u32 = 0,
+/// The time from when the test starts to the end of the test in nanoseconds
 words_remaining: u32 = 0,
 
 /// How many wrong keys the user has pressed
@@ -34,6 +36,7 @@ pub fn init(
     num_words: u32,
 ) error{ OutOfMemory, EmptyLineNotAllowed }!WordsScene {
     return WordsScene{
+        .initial_words = num_words,
         .words_remaining = num_words,
         .character_buffer = try CharacterBuffer.init(
             alloc,
@@ -59,10 +62,7 @@ pub fn render(
     );
 
     const fps = util.framesPerSecond(data.frame_timings_ns);
-    const wpm = util.wordsPerMinute(
-        self.correct_counter,
-        self.test_start,
-    );
+    const wpm = util.wordsPerMinute(self.correct_counter, self.test_start);
     const words_left = self.words_remaining;
     const num_statistics = 3;
     try stat.renderStatistics(
@@ -139,9 +139,6 @@ pub fn isComplete(self: *const WordsScene) ?TestResultsScene {
         .peak_wpm = self.peak_wpm,
         .test_duration_seconds = @as(f32, @floatFromInt(test_duration_ns)) / 1e9,
         .average_accuracy = util.accuracy(self.correct_counter, self.mistake_counter),
-        .average_wpm = util.wordsPerMinute(
-            self.correct_counter,
-            self.test_start,
-        ),
+        .average_wpm = util.wordsPerMinute(self.correct_counter, self.test_start),
     };
 }
