@@ -52,9 +52,10 @@ pub fn render(
         data.root_window,
         data.words.max_codepoints,
     );
+    const charbuf_window = layout.charBufWindow(game_window);
 
     self.character_buffer.render(
-        layout.charBufWindow(game_window),
+        charbuf_window,
         data.cursor_shape,
     );
 
@@ -64,17 +65,21 @@ pub fn render(
         self.timeLeftNanoSeconds() / 1_000_000_000,
     ));
     const num_statistics = 3;
-    try stat.renderStatistics(
-        num_statistics,
-        &.{
-            .{ .value = time_left, .label = "time: " },
-            .{ .value = fps, .label = "fps: " },
-            .{ .value = wpm, .label = "wpm: " },
-        },
-        data,
-    );
-
     self.peak_wpm = @max(self.peak_wpm, wpm);
+
+    if (game_window.height - charbuf_window.height > 2 and
+        game_window.width > 10)
+    {
+        try stat.renderStatistics(
+            num_statistics,
+            &.{
+                .{ .value = time_left, .label = "time: " },
+                .{ .value = fps, .label = "fps: " },
+                .{ .value = wpm, .label = "wpm: " },
+            },
+            data,
+        );
+    }
 }
 
 pub fn deinit(

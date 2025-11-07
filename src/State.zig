@@ -85,6 +85,39 @@ pub fn tickFrame(
     defer std.Thread.sleep(frame_delay_ns -| this_frame_time);
 }
 
+pub fn reinit(
+    self: *@This(),
+    codepoint_limit: u16,
+) error{ OutOfMemory, EmptyLineNotAllowed }!void {
+    switch (self.current_scene) {
+        .time_scene => |*time_scene| {
+            _ = self.scene_arena.reset(.retain_capacity);
+            self.words.reseed(self.seed);
+
+            time_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                time_scene.test_duration_ns,
+            );
+        },
+        .word_scene => |*word_scene| {
+            _ = self.scene_arena.reset(.retain_capacity);
+            self.words.reseed(self.seed);
+
+            word_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                word_scene.initial_words,
+            );
+        },
+        .menu_scene => {},
+        .test_results_scene => {},
+        .custom_game_selection_scene => {},
+    }
+}
+
 pub fn processKeyPress(
     self: *@This(),
     key: vaxis.Key,
@@ -235,8 +268,8 @@ pub fn processKeyPress(
             },
             .restart_current_game => {
                 self.words.reseed(self.seed);
-
                 _ = self.scene_arena.reset(.retain_capacity);
+
                 time_scene.* = try .init(
                     self.scene_arena.allocator(),
                     &self.words,
@@ -276,8 +309,8 @@ pub fn processKeyPress(
             },
             .restart_current_game => {
                 self.words.reseed(self.seed);
-
                 _ = self.scene_arena.reset(.retain_capacity);
+
                 word_scene.* = try .init(
                     self.scene_arena.allocator(),
                     &self.words,

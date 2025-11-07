@@ -11,6 +11,11 @@ pub const BORDER_SIZE = 2;
 pub const MIN_TEXT_BOX_HEIGHT = CharacterBuffer.NUM_RENDER_LINES + BORDER_SIZE;
 pub const MIN_GAME_WINDOW_HEIGHT = MIN_TEXT_BOX_HEIGHT + BORDER_SIZE;
 
+// todo: add functions which split a window horizontally or veritcally in some ratio.
+//
+// Using this we can get non overlapping windows! We can also no when our windows
+// cant render because the space is too small
+
 /// The child window where our entire game goes
 pub fn gameWindow(
     root_window: Window,

@@ -15,23 +15,17 @@ const Event = union(enum) {
 };
 
 pub fn main() !void {
-    var debug_alloc = std.heap.DebugAllocator(.{}).init;
+    const gpa = std.heap.page_allocator;
 
-    const alloc = switch (@import("builtin").mode) {
-        .Debug => debug_alloc.allocator(),
-        else => std.heap.page_allocator,
-    };
-
-    var game_state = try State.init(alloc);
+    var game_state = try State.init(gpa);
     defer game_state.deinit();
 
-    // Init tty
     var tty_buffer: [1024]u8 = undefined;
     var tty = try vaxis.Tty.init(&tty_buffer);
     defer tty.deinit();
 
-    var vx = try vaxis.init(alloc, .{});
-    defer vx.deinit(alloc, tty.writer());
+    var vx = try vaxis.init(gpa, .{});
+    defer vx.deinit(gpa, tty.writer());
 
     var loop: vaxis.Loop(Event) = .{ .tty = &tty, .vaxis = &vx };
     try loop.init();
@@ -41,9 +35,6 @@ pub fn main() !void {
     try vx.enterAltScreen(tty.writer());
     try vx.queryTerminal(tty.writer(), 1 * std.time.ns_per_s);
 
-    var win = vx.window();
-    var render_width = (win.width * 3) / 5;
-
     game_loop: while (true) {
         const frame_start = now();
         defer game_state.tickFrame(frame_start);
@@ -51,13 +42,15 @@ pub fn main() !void {
         while (loop.tryEvent()) |event| {
             switch (event) {
                 .winsize => |ws| {
-                    try vx.resize(alloc, tty.writer(), ws);
-                    win = vx.window();
-                    render_width = (win.width * 3) / 5;
+                    try vx.resize(gpa, tty.writer(), ws);
+                    try game_state.reinit(((vx.screen.width * 5) / 8) -| 2);
                 },
 
                 .key_press => |key| {
-                    const result = try game_state.processKeyPress(key, render_width - 2);
+                    const result = try game_state.processKeyPress(
+                        key,
+                        ((vx.screen.width * 5) / 8) -| 2,
+                    );
                     switch (result) {
                         .continue_game => {},
                         .graceful_exit => break :game_loop,
@@ -81,9 +74,9 @@ pub fn main() !void {
             .custom_game_selection_scene => {},
         }
 
-        win.clear();
-        win.hideCursor();
-        try game_state.render(win);
+        vx.window().clear();
+        vx.window().hideCursor();
+        try game_state.render(vx.window());
         try vx.render(tty.writer());
     }
 }
