@@ -8,6 +8,7 @@ const stat = @import("statistics.zig");
 
 average_wpm: f32,
 peak_wpm: f32,
+average_accuracy: f32,
 test_duration_seconds: f32,
 
 /// Clears screen and renders the current state.
@@ -21,9 +22,10 @@ pub fn render(
     );
     const middle_box = layout.resultsWindow(game_window);
 
-    const statistics: [3]stat.Statistic = .{
+    const statistics: [4]stat.Statistic = .{
         .{ .label = "average words per minute: ", .value = self.average_wpm },
         .{ .label = "peak words per minute: ", .value = self.peak_wpm },
+        .{ .label = "accuracy: ", .value = self.average_accuracy },
         .{ .label = "test duration: ", .value = self.average_wpm },
     };
 

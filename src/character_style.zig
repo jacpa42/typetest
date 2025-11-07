@@ -25,13 +25,6 @@ pub fn invert_fg_bg(style: vaxis.Style) vaxis.Style {
     return new_style;
 }
 
-/// The style for the cursor
-pub const cursor = vaxis.Style{
-    .italic = true,
-    .fg = .{ .index = 0 },
-    .bg = .{ .index = 15 },
-};
-
 /// The style for rendering the "fps: " or "wpm: " etc
 pub const statistic_label = vaxis.Style{
     .fg = .{ .index = 4 },

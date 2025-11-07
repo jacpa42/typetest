@@ -43,21 +43,6 @@ pub fn init(
     };
 }
 
-/// Initializes the game with some new lines reusing the allocated memory
-pub fn reinit(
-    self: *TimeScene,
-    alloc: std.mem.Allocator,
-    words: *Words,
-    codepoint_limit: u16,
-    test_duration_ns: u64,
-) error{ OutOfMemory, EmptyLineNotAllowed }!void {
-    try self.character_buffer.reinit(alloc, words, codepoint_limit);
-    self.mistake_counter = 0;
-    self.correct_counter = 0;
-    self.test_duration_ns = test_duration_ns;
-    self.test_start = null;
-}
-
 /// Clears screen and renders the current state.
 pub fn render(
     self: *TimeScene,
@@ -68,12 +53,14 @@ pub fn render(
         data.words.max_codepoints,
     );
 
-    self.character_buffer.render(layout.charBufWindow(game_window));
+    self.character_buffer.render(
+        layout.charBufWindow(game_window),
+        data.cursor_shape,
+    );
 
     const fps = util.framesPerSecond(data.frame_timings_ns);
     const wpm = util.wordsPerMinute(
         self.correct_counter,
-        self.mistake_counter,
         self.test_start,
     );
     const time_left = @as(f32, @floatFromInt(
@@ -147,9 +134,9 @@ pub fn isComplete(self: *const TimeScene) ?TestResultsScene {
     return TestResultsScene{
         .peak_wpm = self.peak_wpm,
         .test_duration_seconds = @as(f32, @floatFromInt(self.test_duration_ns)) / 1e9,
+        .average_accuracy = util.accuracy(self.correct_counter, self.mistake_counter),
         .average_wpm = util.wordsPerMinute(
             self.correct_counter,
-            self.mistake_counter,
             test_start,
         ),
     };

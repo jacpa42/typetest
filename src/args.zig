@@ -15,11 +15,14 @@ const DEFAULT_WORD_COUNT = 50;
 const DEFAULT_ANIMIATION_DURATION = 500;
 
 const params = clap.parseParamsComptime(
-    \\-h, --help             Display this help and exit
-    \\-s, --seed <seed>      Seed to use for rng (default is a random seed)
-    \\-f, --word-file <file> File to select words from (ignored if stdin is not empty)
-    \\-a, --duration <dur>   Duration of the title screen animation in frames
+    \\-h, --help                 Display this help and exit
+    \\-s, --seed <seed>          Seed to use for rng (default is a random seed)
+    \\-f, --word-file <file>     File to select words from (ignored if stdin is not empty)
+    \\-a, --duration <dur>       Duration of the title screen animation in frames
+    \\-c, --cursor-style <style> Cursor style
 );
+
+const vaxis = @import("vaxis");
 
 /// All the relevant stuff we need after argument parsing
 pub const Args = struct {
@@ -27,29 +30,32 @@ pub const Args = struct {
     words: Words,
     seed: u64,
     animation_duration: u64,
+    cursor_style: vaxis.Cell.CursorShape,
 };
 
 pub fn parseArgs(alloc: std.mem.Allocator) !Args {
-    var res = clap.parse(
+    var fba = std.heap.FixedBufferAllocator.init(&.{});
+    const oom_allocator = fba.allocator();
+
+    // use an allocator which will oom for clap parse
+    // no deinit?
+    const res = clap.parse(
         clap.Help,
         &params,
         .{
             .file = clap.parsers.string,
             .seed = clap.parsers.int(u64, 10),
             .dur = clap.parsers.int(u64, 10),
+            .style = clap.parsers.enumeration(vaxis.Cell.CursorShape),
         },
-        .{ .allocator = alloc },
+        .{ .allocator = oom_allocator },
     ) catch |err| {
-        var buf: [1024]u8 = undefined;
-        const errname = @errorName(err);
-        const errmsg = std.fmt.bufPrint(
-            &buf,
-            "An unexpected error has occured during argument parsing: {s}\n\n",
-            .{errname},
-        ) catch std.process.exit(1);
-        printHelp(errmsg);
+        const info = switch (err) {
+            error.NameNotPartOfEnum => "The enumeration values are listed in the help menu below\n\n",
+            inline else => |e| "Failed to parse command line arguments: " ++ @errorName(e) ++ "\n\n",
+        };
+        printHelp(info);
     };
-    defer res.deinit();
 
     if (res.args.help > 0) printHelp("");
 
@@ -90,6 +96,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         .words = words,
         .animation_duration = animation_duration,
         .seed = res.args.seed orelse (@bitCast(std.time.microTimestamp() *% 115578717622022981)),
+        .cursor_style = res.args.@"cursor-style" orelse vaxis.Cell.CursorShape.default,
     };
 }
 

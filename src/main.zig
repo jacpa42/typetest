@@ -17,7 +17,12 @@ const Event = union(enum) {
 };
 
 pub fn main() !void {
-    const alloc = std.heap.page_allocator;
+    var debug_alloc = std.heap.DebugAllocator(.{}).init;
+
+    const alloc = switch (@import("builtin").mode) {
+        .Debug => debug_alloc.allocator(),
+        else => std.heap.page_allocator,
+    };
 
     var game_state = try State.init(alloc);
     defer game_state.deinit();
@@ -78,6 +83,7 @@ pub fn main() !void {
         }
 
         win.clear();
+        win.hideCursor();
         try game_state.render(win);
         try vx.render(tty.writer());
     }

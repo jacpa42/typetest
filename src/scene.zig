@@ -28,6 +28,7 @@ pub const RenderData = struct {
     /// In frames
     animation_duration: u64,
     root_window: vaxis.Window,
+    cursor_shape: vaxis.Cell.CursorShape,
     words: *Words,
     /// Several recording of the frame time
     frame_timings_ns: *const FrameTimings,

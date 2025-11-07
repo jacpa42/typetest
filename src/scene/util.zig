@@ -18,27 +18,28 @@ pub fn now() std.time.Instant {
     return std.time.Instant.now() catch unreachable;
 }
 
+pub fn accuracy(correct: u32, incorrect: u32) f32 {
+    return 100.0 * @as(f32, @floatFromInt(correct)) / @as(f32, @floatFromInt(correct + incorrect));
+}
+
 pub fn wordsPerMinute(
     correct: u32,
-    mistakes: u32,
     test_start: ?std.time.Instant,
 ) f32 {
     const start = test_start orelse return 0.0;
-    return charactersPerSecond(correct, mistakes, start) * 60.0 / 5.0;
+    return charactersPerSecond(correct, start) * 12.0;
 }
 
 /// The number of characters per second the user is typeing
 pub fn charactersPerSecond(
     correct: u32,
-    mistakes: u32,
     test_start: std.time.Instant,
 ) f32 {
+    // We dont start recording wpm or cps until this time as otherwise the wpm is insane
+    const wpm_normalization_period_seconds = 0.5;
+
     const elapsed = @as(f32, @floatFromInt(now().since(test_start))) / 1e9;
-
-    const total_chars = @as(f32, @floatFromInt(correct + mistakes));
-    const accuracy = @as(f32, @floatFromInt(correct)) / @max(total_chars, 1.0);
-
-    return (total_chars * accuracy) / @max(elapsed, 1.0);
+    return @as(f32, @floatFromInt(correct)) / @max(elapsed, wpm_normalization_period_seconds);
 }
 
 /// The number of characters per second the user is typeing

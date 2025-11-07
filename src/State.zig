@@ -16,10 +16,11 @@ pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
 
 /// What frame of the game are we on
 frame_counter: u64 = 0,
-/// The animation duration (in frames)
-animation_duration: u64,
 /// The time taken to render a frame in ns
 frame_timings: FrameTimings = .fill(0),
+
+/// Arena alloctator used to store/render each scene
+scene_arena: std.heap.ArenaAllocator,
 /// Current scene of the game
 current_scene: scene.Scene = .{ .menu_scene = .{} },
 /// Struct used to generate tests
@@ -27,14 +28,11 @@ words: Words,
 /// Game seed
 seed: u64,
 
-alloc: std.mem.Allocator,
 /// I have issues when using stack buffers for my render functions,
 /// so I pass to to each function which needs to render stuff and
 /// they must just alloc the memory they need in here.
 ///
 /// Gets cleared the end of each frame.
-///
-/// Initalized with a static buffer!
 frame_print_buffer: std.ArrayList(u8),
 
 pub fn init(alloc: std.mem.Allocator) !@This() {
@@ -43,22 +41,21 @@ pub fn init(alloc: std.mem.Allocator) !@This() {
         .alloc = alloc,
         .words = args.words,
         .seed = args.seed,
-        .animation_duration = args.animation_duration,
-        .frame_print_buffer = try .initCapacity(alloc, 1024 * 1024),
+        .frame_print_buffer = .empty,
     };
 }
 
 pub inline fn render(
     self: *@This(),
     window: vaxis.Window,
-) error{ EmptyLineNotAllowed, OutOfMemory }!void {
+) error{ WindowTooSmall, OutOfMemory }!void {
     return self.current_scene.render(.{
+        .alloc = self.alloc,
         .words = &self.words,
+        .frame_counter = self.frame_counter,
         .frame_timings_ns = &self.frame_timings,
         .root_window = window,
         .frame_print_buffer = &self.frame_print_buffer,
-        .frame_counter = self.frame_counter,
-        .animation_duration = self.animation_duration,
     });
 }
 
@@ -104,6 +101,7 @@ pub fn processKeyPress(
             .select => switch (supermenu.selection) {
                 .main_menu => |inner_menu| {
                     switch (inner_menu) {
+                        .exit => return .graceful_exit,
                         .time => supermenu.selection = .{ .time_game_menu = .default },
                         .word => supermenu.selection = .{ .word_game_menu = .default },
                     }

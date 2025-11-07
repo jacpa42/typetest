@@ -61,36 +61,6 @@ pub fn init(
     return CharacterBuffer{ .lines = lines };
 }
 
-/// Initializes a new instance of `CharacterBuffer` without discarding the allocated memory in the various arraylists.
-///
-/// Must be called on defined member of `CharacterBuffer`.
-pub fn reinit(
-    self: *CharacterBuffer,
-    alloc: std.mem.Allocator,
-    words: *Words,
-    codepoint_limit: u16,
-) error{ OutOfMemory, EmptyLineNotAllowed }!void {
-    inline for (&self.lines) |*line| {
-        var reused_array_list = line.words;
-        const total_codepoints_with_spaces = try words.fillRandomLine(
-            alloc,
-            &reused_array_list,
-            codepoint_limit,
-        );
-
-        line.* = try .init(
-            reused_array_list,
-            total_codepoints_with_spaces,
-        );
-    }
-
-    inline for (&self.render_chars) |*rchars| {
-        rchars.clearRetainingCapacity();
-    }
-
-    self.current_line = 0;
-}
-
 pub fn deinit(
     self: *CharacterBuffer,
     alloc: std.mem.Allocator,
@@ -108,6 +78,7 @@ pub fn deinit(
 pub fn render(
     self: *const CharacterBuffer,
     win: vaxis.Window,
+    cursor_shape: vaxis.Cell.CursorShape,
 ) void {
     var row: u16 = 0;
 
@@ -200,10 +171,9 @@ pub fn render(
             cursor_codepoint = next_row.peekNext() orelse unreachable;
         }
 
-        win.writeCell(cursor_col, cursor_row, .{
-            .char = .{ .grapheme = cursor_codepoint, .width = 0 },
-            .style = character_style.cursor,
-        });
+        // render the cursor
+        win.setCursorShape(cursor_shape);
+        win.showCursor(cursor_col, cursor_row);
     }
 }
 

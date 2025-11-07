@@ -19,6 +19,9 @@ pub const Word = struct {
 
 /// A bunch of `Word` structs in an array with a nifty way to generate random words.
 pub const Words = struct {
+    /// Raw bytes of the user input words
+    word_buf: []const u8,
+
     /// Pieces of buf which are:
     /// 1. Length in range 1..MAX_WORD_SIZE
     /// 2. utf8
@@ -82,19 +85,22 @@ pub const Words = struct {
         return total_codepoints;
     }
 
-    pub fn deinit(self: *@This(), gpa: std.mem.Allocator) void {
-        gpa.free(self.words);
+    pub fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
+        alloc.free(self.word_buf);
+        alloc.free(self.words);
         self.* = undefined;
     }
 
     /// Parses the word_buf into some new words.
+    ///
+    /// Stores the word_buf for deinit
     pub fn init(
-        gpa: std.mem.Allocator,
+        alloc: std.mem.Allocator,
         word_buf: []const u8,
     ) error{ OutOfMemory, InvalidUtf8, EmptyFile }!@This() {
         var largest_word: u16 = 0;
-        var words = try std.ArrayList(Word).initCapacity(gpa, 0);
-        errdefer words.deinit(gpa);
+        var words = try std.ArrayList(Word).initCapacity(alloc, 0);
+        errdefer words.deinit(alloc);
 
         var word_iterator = std.mem.splitAny(u8, word_buf, " \n\r\t");
         word_iter: while (word_iterator.next()) |word_bytes| {
@@ -108,7 +114,7 @@ pub const Words = struct {
             if (num_codepoints == 0) continue :word_iter;
 
             largest_word = @max(largest_word, num_codepoints);
-            try words.append(gpa, .{
+            try words.append(alloc, .{
                 .buf = word_bytes,
                 .num_codepoints = num_codepoints,
             });
@@ -117,7 +123,8 @@ pub const Words = struct {
         if (words.items.len == 0) return error.EmptyFile;
 
         return @This(){
-            .words = try words.toOwnedSlice(gpa),
+            .words = try words.toOwnedSlice(alloc),
+            .word_buf = word_buf,
             .max_codepoints = largest_word,
         };
     }
