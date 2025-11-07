@@ -6,7 +6,7 @@ todo
 
 ## Building
 
-1. Make sure [zig](https://ziglang.org/learn/getting-started/) and [git](https://git-scm.com/install/) are installed and executable.
+1. Make sure [zig](https://ziglang.org/learn/getting-started/) and [git](https://git-scm.com/install/) are installed and in your [path](https://superuser.com/questions/517894/what-is-the-unix-path-variable-and-how-do-i-add-to-it).
 2. Clone and build:
 ```sh
 git clone "https://github.com/jacpa42/typetest"
