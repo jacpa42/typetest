@@ -1,7 +1,7 @@
 # Maintainer: Jacob Enthoven <jacpa42@proton.me>
 
 pkgname=typetest
-pkgver=0.0.2
+pkgver=0.0.3
 pkgrel=1
 pkgdesc="Typing tool written in zig"
 arch=('x86_64' 'aarch64' 'i686')
@@ -9,7 +9,7 @@ url="https://github.com/jacpa42/$pkgname"
 license=('MIT')
 makedepends=('git' 'zig')
 source=("https://github.com/jacpa42/${pkgname}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('9a9395c87b3174da09c4efef538a3991a689770b2c0524017dc7ecce058fcb6b')
+sha256sums=('246d49f55f30c32e0577ac1b5803e1da1282b429444b300599fded5089c6ccda')
 
 build() {
     cd "$srcdir/$pkgname-${pkgver}"
