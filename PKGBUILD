@@ -12,13 +12,13 @@ source=("https://github.com/jacpa42/${pkgname}/archive/refs/tags/v${pkgver}.tar.
 sha256sums=('9a9395c87b3174da09c4efef538a3991a689770b2c0524017dc7ecce058fcb6b')
 
 build() {
-	cd "$srcdir/$pkgname-${pkgver}"
-	zig build -Doptimize=ReleaseFast
+    cd "$srcdir/$pkgname-${pkgver}"
+    zig build -Doptimize=ReleaseFast
 }
 
 package() {
-	cd "$srcdir/$pkgname-${pkgver}"
-	install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-	install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-	install -Dm755 "zig-out/bin/$pkgname" "$pkgdir/usr/bin/$pkgname"
+    cd "$srcdir/$pkgname-${pkgver}"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm755 "zig-out/bin/$pkgname" "$pkgdir/usr/bin/$pkgname"
 }

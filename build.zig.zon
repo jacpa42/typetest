@@ -7,8 +7,8 @@
             .hash = "clap-0.11.0-oBajB-TnAQC7yPLnZRT5WzHZ_4Ly4dX2OILskli74b9H",
         },
         .vaxis = .{
-            .url = "git+https://github.com/rockorager/libvaxis.git#cfa6311448755cf18684c09697d20b7a7622e578",
-            .hash = "vaxis-0.5.1-BWNV_IcuCQCjrYTHNe3-ArhtpwLzRfgI2mBu0yKT7IZl",
+            .url = "git+https://github.com/rockorager/libvaxis.git#fa6f3247ee82741d20e5193e532b3fb07a3082bb",
+            .hash = "vaxis-0.5.1-BWNV_IcuCQAVtAOYOyWPed_XZnRR5jv3JkkBUvlAFpSK",
         },
     },
     .minimum_zig_version = "0.15.2",
