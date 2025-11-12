@@ -1,6 +1,6 @@
 .{
     .name = .typetest,
-    .version = "0.0.1",
+    .version = "0.0.2",
     .dependencies = .{
         .clap = .{
             .url = "git+https://github.com/Hejsil/zig-clap#b7e3348ed60f99ba32c75aa707ff7c87adc31b36",
