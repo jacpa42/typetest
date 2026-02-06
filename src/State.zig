@@ -11,7 +11,7 @@ const parseArgs = cli_args.parseArgs;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Words = @import("words.zig").Words;
 
-pub const NUM_FRAME_TIMINGS = 10;
+pub const NUM_FRAME_TIMINGS = 16;
 pub const FrameTimings = RingBuffer(u64, NUM_FRAME_TIMINGS);
 
 /// What frame of the game are we on
@@ -38,8 +38,10 @@ cursor_shape: vaxis.Cell.CursorShape,
 /// Gets cleared the end of each frame.
 frame_print_buffer: std.ArrayList(u8),
 
-pub fn init(alloc: std.mem.Allocator) !@This() {
-    const args = try parseArgs(alloc);
+pub fn init(
+    alloc: std.mem.Allocator,
+    args: cli_args.Args,
+) !@This() {
     return @This(){
         .scene_arena = std.heap.ArenaAllocator.init(alloc),
         .frame_print_buffer = try .initCapacity(alloc, 1024),
@@ -75,14 +77,14 @@ pub fn tickFrame(
     self: *@This(),
     frame_start: std.time.Instant,
 ) void {
-    const frame_delay_ns: u64 = @as(u64, 1e9) / self.fps;
+    const requested_frame_duration_ns = std.time.ns_per_s / self.fps;
     const this_frame_time = now().since(frame_start);
 
     self.frame_counter += 1;
     self.frame_timings.append(this_frame_time);
     self.frame_print_buffer.clearRetainingCapacity();
 
-    defer std.Thread.sleep(frame_delay_ns -| this_frame_time);
+    defer std.Thread.sleep(requested_frame_duration_ns -| this_frame_time);
 }
 
 pub fn reinit(

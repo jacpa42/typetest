@@ -139,7 +139,7 @@ pub fn charBufWindow(
         .width = game_window.width,
         .height = height,
         .border = .{
-            .style = character_styles.text_box_window_border,
+            .style = character_styles.game_window_border,
             .where = .all,
             .glyphs = .single_rounded,
         },

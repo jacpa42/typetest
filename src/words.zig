@@ -31,7 +31,7 @@ pub const Words = struct {
     words: []const Word,
 
     /// rng type used to generate new words
-    rng: WordRng = .{ .random = .init(DEFAULT_SEED) },
+    rng: WordRng,
 
     /// The maximum number of codepoints in a word
     max_codepoints: u16,
@@ -96,6 +96,8 @@ pub const Words = struct {
     /// Stores the word_buf for deinit
     pub fn init(
         alloc: std.mem.Allocator,
+        rng: WordRng,
+        make_lower_case: bool,
         word_buf: []const u8,
     ) error{ OutOfMemory, InvalidUtf8, EmptyFile }!@This() {
         var largest_word: u16 = 0;
@@ -108,8 +110,11 @@ pub const Words = struct {
 
             var utf8_iter = view.iterator();
             var num_codepoints: u16 = 0;
-            while (utf8_iter.nextCodepointSlice() != null) : (num_codepoints += 1) {
+            while (utf8_iter.nextCodepointSlice()) |slice| : (num_codepoints += 1) {
                 if (num_codepoints > MAX_WORD_SIZE) continue :word_iter;
+                if (make_lower_case and slice.len == 1) {
+                    @constCast(&slice[0]).* = std.ascii.toLower(slice[0]);
+                }
             }
             if (num_codepoints == 0) continue :word_iter;
 
@@ -124,6 +129,7 @@ pub const Words = struct {
 
         return @This(){
             .words = try words.toOwnedSlice(alloc),
+            .rng = rng,
             .word_buf = word_buf,
             .max_codepoints = largest_word,
         };
@@ -140,7 +146,7 @@ pub const Words = struct {
         };
 
         for (input) |empty_lines| {
-            var empty_words = try init(alloc, empty_lines, 1000000);
+            var empty_words = try init(alloc, false, empty_lines, 1000000);
             std.debug.assert(empty_words.words.len == 0);
             for (0..1000) |_| {
                 std.debug.assert(empty_words.randomWord().len == 0);
@@ -159,7 +165,7 @@ pub const Words = struct {
         };
 
         for (input) |empty_lines| {
-            var empty_words = try init(alloc, empty_lines, 1000000);
+            var empty_words = try init(alloc, false, empty_lines, 1000000);
             defer empty_words.deinit(alloc);
             std.debug.assert(empty_words.words.len == 0);
             for (0..1000) |_| {
@@ -169,9 +175,12 @@ pub const Words = struct {
     }
 };
 
+pub const RngMode = enum { sequential, random };
+
 /// A union struct which allows generating a `random` word from the wordbuf.
-const WordRng = union(enum) {
-    sequential: u64,
+pub const WordRng = union(RngMode) {
+    /// NOTE: the value is the current index of the word
+    sequential: usize,
     random: std.Random.DefaultPrng,
 
     /// Generates an index in the range provided

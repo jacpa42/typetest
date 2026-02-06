@@ -59,26 +59,28 @@ pub fn render(
         data.cursor_shape,
     );
 
-    const fps = util.framesPerSecond(data.frame_timings_ns);
     const wpm = util.wordsPerMinute(self.correct_counter, self.test_start);
-    const time_left = @as(f32, @floatFromInt(
-        self.timeLeftNanoSeconds() / 1_000_000_000,
-    ));
-    const num_statistics = 3;
     self.peak_wpm = @max(self.peak_wpm, wpm);
 
     if (game_window.height - charbuf_window.height > 2 and
         game_window.width > 10)
     {
-        try stat.renderStatistics(
-            num_statistics,
-            &.{
-                .{ .value = time_left, .label = "time: " },
-                .{ .value = fps, .label = "fps: " },
-                .{ .value = wpm, .label = "wpm: " },
+        const statistics = [_]stat.Statistic{
+            // .{
+            //     .label = "fps: ",
+            //     .value = util.framesPerSecond(data.frame_timings_ns),
+            // },
+            .{
+                .label = "time: ",
+                .value = @as(f32, @floatFromInt(self.timeLeftNanoSeconds() / std.time.ns_per_s)),
             },
-            data,
-        );
+            .{
+                .label = "wpm: ",
+                .value = wpm,
+            },
+        };
+
+        try stat.renderStatistics(game_window, &statistics, data);
     }
 }
 

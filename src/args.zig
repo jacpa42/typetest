@@ -1,6 +1,7 @@
 const std = @import("std");
 const clap = @import("clap");
-const Words = @import("words.zig").Words;
+const wd = @import("words.zig");
+const Words = wd.Words;
 
 const KIB = 1024;
 const MAX_FILE_SIZE = 512 * KIB;
@@ -14,11 +15,14 @@ const DEFAULT_FPS = 60;
 
 const params = clap.parseParamsComptime(
     \\-h, --help                 Display this help and exit
-    \\-s, --seed <seed>          Seed to use for rng (default is a random seed)
+    \\-s, --seed <seed>          Seed to use for rng (default is a random)
+    \\-m, --mode <mode>          Word generation mode: random | sequential
     \\-w, --word-file <file>     File to select words from (ignored if stdin is not empty)
+    \\-l, --lowercase            Whether or not to make all words lowercase.
     \\-a, --duration <dur>       Duration of the title screen animation in frames
-    \\-c, --cursor-shape <shape> Cursor style
-    \\-f, --fps <fps>            Desired frame rate for the game. Default is 60.
+    \\-c, --cursor-shape <shape> Cursor style (default is block): block  | beam | underline
+    \\-b, --blink                Whether or not the cursor blinks
+    \\-f, --fps <fps>            Desired frame rate for the game (default is 60)
 );
 
 const vaxis = @import("vaxis");
@@ -44,9 +48,10 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         &params,
         .{
             .file = clap.parsers.string,
+            .mode = clap.parsers.enumeration(wd.RngMode),
             .seed = clap.parsers.int(u64, 10),
             .dur = clap.parsers.int(u64, 10),
-            .shape = clap.parsers.enumeration(vaxis.Cell.CursorShape),
+            .shape = clap.parsers.enumeration(CursorShape),
             .fps = parsers.int(u64, 24, std.math.maxInt(u64)),
         },
         .{ .allocator = oom_allocator },
@@ -72,7 +77,13 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         printHelp(info);
     };
 
-    const words = Words.init(alloc, word_buffer) catch |err| {
+    const rand_seed = std.time.microTimestamp() *% 115578717622022981;
+    const seed: u64 = res.args.seed orelse @bitCast(rand_seed);
+    const rng = switch (res.args.mode orelse .random) {
+        .sequential => wd.WordRng{ .sequential = 0 },
+        .random => wd.WordRng{ .random = .init(seed) },
+    };
+    const words = Words.init(alloc, rng, res.args.lowercase > 0, word_buffer) catch |err| {
         const info = switch (err) {
             error.OutOfMemory => "We ran out of memory trying to allocate your input :(\n\n",
             error.InvalidUtf8 => "The input provided is not valid utf8\n\n",
@@ -92,15 +103,31 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
         animation_duration = DEFAULT_ANIMIATION_DURATION;
     }
 
+    const blink = res.args.blink > 0;
+    const cursor_shape: vaxis.Cell.CursorShape =
+        switch (res.args.@"cursor-shape" orelse CursorShape.default) {
+            .block => if (blink) .block_blink else .block,
+            .underline => if (blink) .underline_blink else .underline,
+            .beam => if (blink) .beam_blink else .beam,
+        };
+
     return Args{
         .word_buffer = word_buffer,
         .words = words,
         .animation_duration = animation_duration,
-        .seed = res.args.seed orelse (@bitCast(std.time.microTimestamp() *% 115578717622022981)),
-        .cursor_shape = res.args.@"cursor-shape" orelse vaxis.Cell.CursorShape.default,
+        .seed = seed,
+        .cursor_shape = cursor_shape,
         .fps = res.args.fps orelse DEFAULT_FPS,
     };
 }
+
+const CursorShape = enum {
+    beam,
+    block,
+    underline,
+
+    const default = CursorShape.block;
+};
 
 /// Prints the help to stderr along with an info message and exits the program
 fn printHelp(info: []const u8) noreturn {
@@ -133,6 +160,21 @@ pub const parsers = struct {
                 };
 
                 if (value < min or value > max) return error.Overflow else return value;
+            }
+        }.parse;
+    }
+
+    pub fn @"bool"(comptime default: bool) fn (in: []const u8) error{InvalidCharacter}!bool {
+        return struct {
+            fn parse(in: []const u8) error{InvalidCharacter}!bool {
+                if (in.len == 0) {
+                    return default;
+                } else if (std.mem.eql(u8, in, "false")) {
+                    return false;
+                } else if (std.mem.eql(u8, in, "true")) {
+                    return true;
+                }
+                return error.InvalidCharacter;
             }
         }.parse;
     }

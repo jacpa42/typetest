@@ -56,26 +56,36 @@ pub fn render(
         data.words.max_codepoints,
     );
 
+    const charbuf_window = layout.charBufWindow(game_window);
+
     self.character_buffer.render(
-        layout.charBufWindow(game_window),
+        charbuf_window,
         data.cursor_shape,
     );
 
-    const fps = util.framesPerSecond(data.frame_timings_ns);
     const wpm = util.wordsPerMinute(self.correct_counter, self.test_start);
-    const words_left = self.words_remaining;
-    const num_statistics = 3;
-    try stat.renderStatistics(
-        num_statistics,
-        &.{
-            .{ .value = @as(f32, @floatFromInt(words_left)), .label = "words left: " },
-            .{ .value = fps, .label = "fps: " },
-            .{ .value = wpm, .label = "wpm: " },
-        },
-        data,
-    );
-
     self.peak_wpm = @max(self.peak_wpm, wpm);
+
+    if (game_window.height - charbuf_window.height > 2 and
+        game_window.width > 10)
+    {
+        const statistics = [_]stat.Statistic{
+            // .{
+            //     .label = "fps: ",
+            //     .value = util.framesPerSecond(data.frame_timings_ns),
+            // },
+            .{
+                .label = "words left: ",
+                .value = @as(f32, @floatFromInt(self.words_remaining)),
+            },
+            .{
+                .label = "wpm: ",
+                .value = wpm,
+            },
+        };
+
+        try stat.renderStatistics(game_window, &statistics, data);
+    }
 }
 
 pub fn deinit(

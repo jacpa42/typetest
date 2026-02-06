@@ -13,19 +13,16 @@ pub const Statistic = struct {
 
 /// Renders some integer type to the window
 pub fn renderStatistics(
-    COUNT: comptime_int,
-    statistics: *const [COUNT]Statistic,
+    game_window: vaxis.Window,
+    statistics: []const Statistic,
     data: super.RenderData,
 ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
-    const win = layout.runningStatisticsWindow(try layout.gameWindow(
-        data.root_window,
-        data.words.max_codepoints,
-    ));
+    const win = layout.runningStatisticsWindow(game_window);
 
-    const child_win_width = win.width / COUNT;
+    const child_win_width = win.width / @as(u16, @intCast(statistics.len));
     var x_off: u16 = 0;
 
-    inline for (statistics) |stat| {
+    for (statistics) |stat| {
         defer x_off += child_win_width;
 
         const buf = try data.frame_print_buffer.addManyAsSliceBounded(

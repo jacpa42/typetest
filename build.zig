@@ -57,6 +57,7 @@ fn addRunStep(
         .name = "typetest",
         .root_module = typetest,
     });
+    b.installArtifact(exe);
     const bin = b.addRunArtifact(exe);
     const run_step = b.step("run", "Execute program");
     run_step.dependOn(&bin.step);

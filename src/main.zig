@@ -16,8 +16,7 @@ const Event = union(enum) {
 
 pub fn main() !void {
     const gpa = std.heap.page_allocator;
-
-    var game_state = try State.init(gpa);
+    var game_state = try State.init(gpa, try cli_args.parseArgs(gpa));
     defer game_state.deinit();
 
     var tty_buffer: [1024]u8 = undefined;

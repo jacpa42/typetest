@@ -22,14 +22,16 @@ The built exe should be located at `zig-out/bin/typetest`:
 You need to provide input words via stdin or via a file with --word-file
 
   -h, --help                  Display this help and exit
-  -s, --seed <seed>           Seed to use for rng (default is a random seed)
+  -s, --seed <seed>           Seed to use for rng (default is a random)
+  -m, --mode <mode>           Word generation mode: random | sequential
   -w, --word-file <file>      File to select words from (ignored if stdin is not empty)
   -a, --duration <dur>        Duration of the title screen animation in frames
-  -c, --cursor-shape <shape>  Cursor style
-  -f, --fps <fps>             Desired frame rate for the game. Default is 60.
+  -c, --cursor-shape <shape>  Cursor style (default is block): block | beam | underline
+  -b, --blink                 Whether or not the cursor blinks
+  -f, --fps <fps>             Desired frame rate for the game (default is 60)
 ```
 
-Like the above help message says, you need to provide input words. I have a file called `words.txt` in the repo which contains `3000` common english words which you can use (all lowercase).
+Like the above help message says, you need to provide input words. I have a file called `words.txt` in the repo which contains `3000` common English words which you can use (all lower-case).
 
 ### grep
 
