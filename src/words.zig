@@ -112,7 +112,9 @@ pub const Words = struct {
             var num_codepoints: u16 = 0;
             while (utf8_iter.nextCodepointSlice()) |slice| : (num_codepoints += 1) {
                 if (num_codepoints > MAX_WORD_SIZE) continue :word_iter;
+
                 if (make_lower_case and slice.len == 1) {
+                    // This is a bit sus :)
                     @constCast(&slice[0]).* = std.ascii.toLower(slice[0]);
                 }
             }
