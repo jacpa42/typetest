@@ -104,7 +104,7 @@ pub const Words = struct {
         var words = try std.ArrayList(Word).initCapacity(alloc, 0);
         errdefer words.deinit(alloc);
 
-        var word_iterator = std.mem.splitAny(u8, word_buf, " \n\r\t");
+        var word_iterator = std.mem.splitAny(u8, word_buf, &std.ascii.whitespace);
         word_iter: while (word_iterator.next()) |word_bytes| {
             const view = try std.unicode.Utf8View.init(word_bytes);
 
@@ -139,39 +139,100 @@ pub const Words = struct {
 
     test "Words parsing: empty input" {
         const alloc = std.testing.allocator;
-        const input: [][:0]const u8 = &.{
+        const input: [5][:0]const u8 = .{
             "",
             "\n",
-            "\n" * 2,
-            "\n" * 100,
-            "\n" * 2552,
+            "\n" ** 2,
+            "\n" ** 100,
+            "\n" ** 2552,
         };
 
         for (input) |empty_lines| {
-            var empty_words = try init(alloc, false, empty_lines, 1000000);
-            std.debug.assert(empty_words.words.len == 0);
-            for (0..1000) |_| {
-                std.debug.assert(empty_words.randomWord().len == 0);
-            }
+            _ = init(alloc, .{ .sequential = 0 }, false, empty_lines) catch |e| {
+                try std.testing.expectEqual(error.EmptyFile, e);
+                continue;
+            };
+            @panic("Empty input was mishandled");
         }
     }
 
-    test "Words parsing: happy path" {
-        const alloc = std.testing.allocator;
-        const input: [][:0]const u8 = &.{
-            "",
-            "\n",
-            "\n" * 2,
-            "\n" * 100,
-            "\n" * 2552,
+    /// see http://www.rikai.com/library/kanjitables/kanji_codes.unicode.shtml
+    fn randomJapaneseCharacter(rng: *std.Random) u21 {
+        const ranges = [_][2]u21{
+            .{ 0x3000, 0x303f }, //    Japanese-style punctuation
+            .{ 0x3040, 0x309f }, //    Hiragana
+            .{ 0x30a0, 0x30ff }, //    Katakana
+            .{ 0xff00, 0xffef }, //    Full-width roman characters and half-width katakana
+            .{ 0x4e00, 0x9faf }, //    CJK unifed ideographs - Common and uncommon kanji
+            .{ 0x3400, 0x4dbf }, //    CJK unified ideographs Extension A - Rare kanji
         };
+        const idx = rng.intRangeLessThan(usize, 0, ranges.len);
+        const range = ranges[idx];
 
-        for (input) |empty_lines| {
-            var empty_words = try init(alloc, false, empty_lines, 1000000);
-            defer empty_words.deinit(alloc);
-            std.debug.assert(empty_words.words.len == 0);
-            for (0..1000) |_| {
-                std.debug.assert(empty_words.randomWord().len == 0);
+        return rng.intRangeLessThan(u21, range[0], range[1]);
+    }
+
+    /// see https://character-table.netlify.app/english/
+    fn randomEnglishCharacter(rng: *std.Random) u21 {
+        const ranges = [_][2]u21{
+            .{ 0x20, 0x5F },
+            .{ 0x61, 0x7A },
+            .{ 0x7C, 0x7C + 1 },
+            .{ 0xA0, 0xA0 + 1 },
+            .{ 0xA7, 0xA7 + 1 },
+            .{ 0xA9, 0xA9 + 1 },
+            .{ 0x2010, 0x2011 },
+            .{ 0x2013, 0x2014 },
+            .{ 0x2018, 0x2019 },
+            .{ 0x201C, 0x201D },
+            .{ 0x2020, 0x2021 },
+            .{ 0x2026, 0x2026 + 1 },
+            .{ 0x2030, 0x2030 + 1 },
+            .{ 0x2032, 0x2033 },
+            .{ 0x20AC, 0x20AC + 1 },
+        };
+        const idx = rng.intRangeLessThan(usize, 0, ranges.len);
+        const range = ranges[idx];
+
+        return rng.intRangeLessThan(u21, range[0], range[1]);
+    }
+
+    test "Words parsing: happy path" {
+        const gpa = std.testing.allocator;
+        const max_letters = 10_000;
+
+        for (0..5) |seed| {
+            var default_prng = std.Random.DefaultPrng.init(@intCast(seed));
+            var rng = default_prng.random();
+
+            var word_list = std.ArrayList(u8).empty;
+            // NOTE: errdefer as this buffer is taken by the Words object
+            errdefer word_list.deinit(gpa);
+            for (0..rng.intRangeLessThan(usize, 1, max_letters)) |_| {
+                if (rng.weightedIndex(u8, &.{ 2, 8 }) == 0) {
+                    const idx = rng.intRangeLessThan(u8, 0, std.ascii.whitespace.len);
+                    try word_list.append(gpa, std.ascii.whitespace[idx]);
+                } else {
+                    const next_char_list = [_]u21{ randomEnglishCharacter(&rng), randomJapaneseCharacter(&rng) };
+                    const char = next_char_list[rng.intRangeLessThan(usize, 0, next_char_list.len)];
+
+                    var buf: [4]u8 = @splat(0);
+                    const len = try std.unicode.utf8Encode(char, &buf);
+
+                    try word_list.appendSlice(gpa, buf[0..len]);
+                }
+            }
+
+            var happy_words = try init(
+                gpa,
+                .{ .sequential = 0 },
+                rng.boolean(),
+                try word_list.toOwnedSlice(gpa),
+            );
+            defer happy_words.deinit(gpa);
+
+            for (happy_words.words) |word| {
+                try std.testing.expect(word.num_codepoints < MAX_WORD_SIZE);
             }
         }
     }

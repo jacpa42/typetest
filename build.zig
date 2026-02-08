@@ -9,11 +9,13 @@ pub fn build(b: *std.Build) !void {
     const typetest = b.addModule("typetest", .{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
+        .strip = optimize != .Debug,
         .optimize = optimize,
     });
 
     addDependencies(b, typetest, target, optimize);
     addRunStep(b, typetest);
+    setupTestStep(b, typetest);
 
     const release = b.step("release", "Create release builds of typetest");
     const git_version = getGitVersion(b);
@@ -65,148 +67,23 @@ fn addRunStep(
     // add cmdline args
     if (b.args) |args| bin.addArgs(args);
 
-    const mod_tests = b.addTest(.{ .root_module = typetest });
-    const run_mod_tests = b.addRunArtifact(mod_tests);
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
-
     // Install the executable in build dir
     b.installArtifact(exe);
 }
 
-fn setupCheckStep(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    options: *std.Build.Step.Options,
-    superhtml: *std.Build.Module,
-    folders: *std.Build.Dependency,
-    lsp: *std.Build.Dependency,
-) *std.Build.Step {
-    const check = b.step("check", "Check if the SuperHTML CLI compiles");
-    const super_cli_check = b.addExecutable(.{
-        .name = "superhtml",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
-    super_cli_check.root_module.addImport("superhtml", superhtml);
-    super_cli_check.root_module.addImport(
-        "known_folders",
-        folders.module("known-folders"),
-    );
-    super_cli_check.root_module.addImport("lsp", lsp.module("lsp"));
-    super_cli_check.root_module.addOptions("build_options", options);
-
-    check.dependOn(&super_cli_check.step);
-    return check;
-}
 fn setupTestStep(
     b: *std.Build,
-    superhtml: *std.Build.Module,
-    check: *std.Build.Step,
+    typetest: *std.Build.Module,
 ) void {
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(check);
 
     const unit_tests = b.addTest(.{
-        .root_module = superhtml,
+        .root_module = typetest,
         .filters = b.args orelse &.{},
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_unit_tests.step);
-}
-
-fn setupCliTool(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    options: *std.Build.Step.Options,
-    superhtml: *std.Build.Module,
-    folders: *std.Build.Dependency,
-    lsp: *std.Build.Dependency,
-) void {
-    const super_cli = b.addExecutable(.{
-        .name = "superhtml",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .single_threaded = true,
-        }),
-    });
-
-    super_cli.root_module.addImport("superhtml", superhtml);
-    super_cli.root_module.addImport(
-        "known_folders",
-        folders.module("known-folders"),
-    );
-    super_cli.root_module.addImport("lsp", lsp.module("lsp"));
-    super_cli.root_module.addOptions("build_options", options);
-
-    const run_exe = b.addRunArtifact(super_cli);
-    if (b.args) |args| run_exe.addArgs(args);
-    const run_exe_step = b.step("run", "Run the SuperHTML CLI");
-    run_exe_step.dependOn(&run_exe.step);
-
-    b.installArtifact(super_cli);
-}
-
-fn setupWasmStep(
-    b: *std.Build,
-    optimize: std.builtin.OptimizeMode,
-    options: *std.Build.Step.Options,
-    superhtml: *std.Build.Module,
-    lsp: *std.Build.Dependency,
-) void {
-    const wasm = b.step("wasm", "Generate a WASM build of the SuperHTML LSP for VSCode");
-    const super_wasm_lsp = b.addExecutable(.{
-        .name = "superhtml",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/wasm.zig"),
-            .target = b.resolveTargetQuery(.{
-                .cpu_arch = .wasm32,
-                .os_tag = .wasi,
-            }),
-            .optimize = optimize,
-            .single_threaded = true,
-            .link_libc = false,
-        }),
-    });
-
-    super_wasm_lsp.root_module.addImport("superhtml", superhtml);
-    super_wasm_lsp.root_module.addImport("lsp", lsp.module("lsp"));
-    super_wasm_lsp.root_module.addOptions("build_options", options);
-
-    const target_output = b.addInstallArtifact(super_wasm_lsp, .{
-        .dest_dir = .{ .override = .{ .custom = "" } },
-    });
-    wasm.dependOn(&target_output.step);
-}
-
-fn setupFetchLanguageSubtagRegistryStep(
-    b: *std.Build,
-    target: std.Build.ResolvedTarget,
-) void {
-    const step = b.step(
-        "fetch-language-subtag-registry",
-        "Fetch the IANA language subtag registry",
-    );
-    const fetcher = b.addExecutable(.{
-        .name = "language-subtag-fetcher",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/html/language_tag/fetch.zig"),
-            .target = target,
-        }),
-    });
-    const fetch = b.addRunArtifact(fetcher);
-    fetch.has_side_effects = true;
-    fetch.addFileArg(b.path("src/html/language_tag/registry.txt"));
-    step.dependOn(&fetch.step);
 }
 
 fn setupReleaseStep(
@@ -302,6 +179,7 @@ const Version = union(Kind) {
         };
     }
 };
+
 fn getGitVersion(b: *std.Build) Version {
     const git_path = b.findProgram(&.{"git"}, &.{}) catch return .unknown;
     var out: u8 = undefined;

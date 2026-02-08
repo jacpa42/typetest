@@ -1,6 +1,7 @@
 const std = @import("std");
 const clap = @import("clap");
 const wd = @import("words.zig");
+const vaxis = @import("vaxis");
 const Words = wd.Words;
 
 const KIB = 1024;
@@ -16,16 +17,25 @@ const DEFAULT_FPS = 60;
 const params = clap.parseParamsComptime(
     \\-h, --help                 Display this help and exit
     \\-s, --seed <seed>          Seed to use for rng (default is a random)
-    \\-m, --mode <mode>          Word generation mode: random | sequential
-    \\-w, --word-file <file>     File to select words from (ignored if stdin is not empty)
-    \\-l, --lowercase            Whether or not to make all words lowercase.
     \\-a, --duration <dur>       Duration of the title screen animation in frames
     \\-c, --cursor-shape <shape> Cursor style (default is block): block  | beam | underline
+    \\-m, --mode <mode>          Word generation mode (default is random): random | sequential
+    \\-w, --word-file <file>     File to select words from (ignored if stdin is not empty)
+    \\-l, --lowercase            Whether or not to make all words lowercase.
     \\-b, --blink                Whether or not the cursor blinks
     \\-f, --fps <fps>            Desired frame rate for the game (default is 60)
 );
 
-const vaxis = @import("vaxis");
+const value_parsers = .{
+    .file = clap.parsers.string,
+    .mode = clap.parsers.enumeration(wd.RngMode),
+    .seed = clap.parsers.int(u64, 10),
+    .dur = clap.parsers.int(u64, 10),
+    .shape = clap.parsers.enumeration(CursorShape),
+    .fps = parsers.int(u64, 24, std.math.maxInt(u64)),
+};
+
+const opts = clap.ParseOptions{ .allocator = undefined };
 
 /// All the relevant stuff we need after argument parsing
 pub const Args = struct {
@@ -38,24 +48,7 @@ pub const Args = struct {
 };
 
 pub fn parseArgs(alloc: std.mem.Allocator) !Args {
-    var fba = std.heap.FixedBufferAllocator.init(&.{});
-    const oom_allocator = fba.allocator();
-
-    // use an allocator which will oom for clap parse
-    // no deinit?
-    const res = clap.parse(
-        clap.Help,
-        &params,
-        .{
-            .file = clap.parsers.string,
-            .mode = clap.parsers.enumeration(wd.RngMode),
-            .seed = clap.parsers.int(u64, 10),
-            .dur = clap.parsers.int(u64, 10),
-            .shape = clap.parsers.enumeration(CursorShape),
-            .fps = parsers.int(u64, 24, std.math.maxInt(u64)),
-        },
-        .{ .allocator = oom_allocator },
-    ) catch |err| {
+    const res = clap.parse(clap.Help, &params, value_parsers, opts) catch |err| {
         const info = switch (err) {
             error.NameNotPartOfEnum => "The enumeration values are listed in the help menu below\n\n",
             inline else => |e| "Failed to parse command line arguments: " ++ @errorName(e) ++ "\n\n",
@@ -71,8 +64,8 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
     ) catch |err| {
         const info = switch (err) {
             error.MissingInput => "You need to provide input words via stdin or via a file with --word-file\n\n",
-            error.InvalidUtf8 => "The file path provided is not valid utf8\n\n",
-            inline else => |e| "An unexpected error has occured: " ++ @errorName(e) ++ "\n\n",
+            error.InvalidUtf8 => "The file path provided is not valid UTF-8\n\n",
+            inline else => |e| "An unexpected error has occurred: " ++ @errorName(e) ++ "\n\n",
         };
         printHelp(info);
     };
@@ -86,7 +79,7 @@ pub fn parseArgs(alloc: std.mem.Allocator) !Args {
     const words = Words.init(alloc, rng, res.args.lowercase > 0, word_buffer) catch |err| {
         const info = switch (err) {
             error.OutOfMemory => "We ran out of memory trying to allocate your input :(\n\n",
-            error.InvalidUtf8 => "The input provided is not valid utf8\n\n",
+            error.InvalidUtf8 => "The input provided is not valid UTF-8\n\n",
             error.EmptyFile => "The input provided is contains no words\n\n",
         };
         printHelp(info);
@@ -206,4 +199,18 @@ pub fn readWordFileIntoMemory(
     );
 
     return word_buf;
+}
+
+test "using allocator undefined is okay for arg parsing :)" {
+    const argbuf: []const u8 =
+        "--seed 132532 " ++
+        "--duration 2139 " ++
+        "--cursor-shape block " ++
+        "--mode sequential " ++
+        "--word-file /home/jacob/Documents/dissertation.pdf " ++
+        "--lowercase " ++
+        "--blink " ++
+        "--fps 144";
+    var my_pog_iter = std.mem.splitScalar(u8, argbuf, ' ');
+    _ = try clap.parseEx(clap.Help, &params, value_parsers, &my_pog_iter, opts);
 }

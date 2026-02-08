@@ -5,10 +5,9 @@ const character_style = @import("../character_style.zig");
 const layout = @import("window_layout.zig");
 const util = @import("util.zig");
 
-const StatisticValue = f32;
 pub const Statistic = struct {
     label: []const u8,
-    value: StatisticValue,
+    value: f32,
 };
 
 /// Renders some integer type to the window

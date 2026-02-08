@@ -8,6 +8,10 @@ const scene = @import("scene.zig");
 const now = @import("scene/util.zig").now;
 const State = @import("State.zig");
 
+test {
+    std.testing.refAllDecls(@This());
+}
+
 const Event = union(enum) {
     key_press: vaxis.Key,
     winsize: vaxis.Winsize,
@@ -37,25 +41,23 @@ pub fn main() !void {
         const frame_start = now();
         defer game_state.tickFrame(frame_start);
 
-        while (loop.tryEvent()) |event| {
-            switch (event) {
-                .winsize => |ws| {
-                    try vx.resize(gpa, tty.writer(), ws);
-                    try game_state.reinit(((vx.screen.width * 5) / 8) -| 2);
-                },
+        while (loop.tryEvent()) |event| switch (event) {
+            .winsize => |ws| {
+                try vx.resize(gpa, tty.writer(), ws);
+                try game_state.reinit(((vx.screen.width * 5) / 8) -| 2);
+            },
 
-                .key_press => |key| {
-                    const result = try game_state.processKeyPress(
-                        key,
-                        ((vx.screen.width * 5) / 8) -| 2,
-                    );
-                    switch (result) {
-                        .continue_game => {},
-                        .graceful_exit => break :game_loop,
-                    }
-                },
-            }
-        }
+            .key_press => |key| {
+                const result = try game_state.processKeyPress(
+                    key,
+                    ((vx.screen.width * 5) / 8) -| 2,
+                );
+                switch (result) {
+                    .continue_game => {},
+                    .graceful_exit => break :game_loop,
+                }
+            },
+        };
 
         switch (game_state.current_scene) {
             .time_scene => |*time_scene| if (time_scene.isComplete()) |results| {
@@ -76,44 +78,5 @@ pub fn main() !void {
         vx.window().hideCursor();
         try game_state.render(vx.window());
         try vx.render(tty.writer());
-    }
-}
-
-test "statistic formatting" {
-    const labels: [7][]const u8 = .{
-        "wpm: ",
-        "ti食me left: ",
-        "words left: ",
-        "fp食s食: ",
-        "mistakes: ",
-        "雨: ",
-        "🐐雨食: ",
-    };
-    var prng = std.Random.DefaultPrng.init(0);
-    const statistic = @import("scene/statistics.zig");
-
-    for (0.., labels) |seed, label| {
-        std.debug.print("using seed: {}\n", .{seed});
-        prng.seed(@as(u64, seed));
-        var rng = prng.random();
-        const true_value = rng.int(u32);
-
-        const stat = statistic.Statistic{
-            .label = label,
-            .value = true_value,
-        };
-        const fmt_stat = statistic.FormattedStatistic.init(stat);
-
-        {
-            const fmt_len = try std.unicode.utf8CountCodepoints(label) + fmt_stat.getValue().len;
-            try std.testing.expect(fmt_stat.codepoint_len == fmt_len);
-        }
-
-        {
-            const parsed_value = try std.fmt.parseInt(u32, fmt_stat.getValue(), 10);
-            std.debug.print("true_value: {}, formatted_value: {s}\n", .{ true_value, fmt_stat.getValue() });
-            std.debug.print("formatted_value_buf: {s}\n", .{fmt_stat.value_buffer});
-            try std.testing.expect(parsed_value == true_value);
-        }
     }
 }

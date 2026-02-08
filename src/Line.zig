@@ -48,7 +48,7 @@ pub fn deinit(
 
 /// Returns the next codepoint. Returns `null` iff at the end of the buffer
 ///
-/// If our line contains these words: `['hi','bro']` then our nextCodepoint would return
+/// If our line contains these words: `['hi','bro']` then our `next` would return
 ///
 /// `'h', 'i', ' ', 'b', 'r', 'o', ' ', null`
 ///
@@ -101,25 +101,27 @@ test "unicode shenanigans" {
     const cp_3 = "雨";
     const cp_4 = "🫡";
 
-    const cp_1234: *const [1 + 2 + 3 + 4:0]u8 = cp_1 ++ cp_2 ++ cp_3 ++ cp_4;
-
-    var line = Line.init(cp_1234);
+    const gpa = std.testing.allocator;
+    var word_list = std.ArrayList(u8).empty;
+    defer word_list.deinit(gpa);
+    try word_list.appendSlice(gpa, cp_1 ++ cp_2 ++ cp_3 ++ cp_4);
+    var line = try Line.init(word_list, 4);
 
     var nxt: ?[]const u8 = null;
     {
-        nxt = line.nextCodepoint();
+        nxt = line.next();
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_1));
 
-        nxt = line.nextCodepoint();
+        nxt = line.next();
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_2));
 
-        nxt = line.nextCodepoint();
+        nxt = line.next();
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_3));
 
-        nxt = line.nextCodepoint();
+        nxt = line.next();
         try std.testing.expect(std.mem.eql(u8, nxt.?, cp_4));
 
-        nxt = line.nextCodepoint();
+        nxt = line.next();
         try std.testing.expect(nxt == null);
     }
     {
