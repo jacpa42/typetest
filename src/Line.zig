@@ -54,12 +54,12 @@ pub fn deinit(
 ///
 /// Note: Does not error when _first_ called as the line cannot be empty when created
 /// with `Line.init` method.
-pub inline fn next(self: *Line) ?[]const u8 {
+pub fn next(self: *Line) ?[]const u8 {
     return self.iter.nextCodepointSlice();
 }
 
 /// Peeks at the next codepoint. Returns `null` iff at the end of the line.
-pub inline fn peekNext(self: *const Line) ?[]const u8 {
+pub fn peekNext(self: *const Line) ?[]const u8 {
     var iter_copy = self.iter;
     return iter_copy.nextCodepointSlice();
 }

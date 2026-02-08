@@ -60,3 +60,24 @@ pub fn render(
         });
     }
 }
+
+/// Actions in the results screen
+pub const Action = enum {
+    none,
+    /// quit program
+    quit,
+    /// Returns to main menu
+    return_to_menu,
+
+    /// Process the event from vaxis and optionally emit an action to process
+    pub fn processKeydown(key: vaxis.Key) @This() {
+        const esc = std.ascii.control_code.esc;
+        const cr = std.ascii.control_code.cr;
+        const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
+
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matchesAny(&.{ esc, cr }, .{})) return .return_to_menu;
+
+        return .none;
+    }
+};

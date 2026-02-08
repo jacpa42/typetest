@@ -116,3 +116,38 @@ pub fn processKeyPress(
         .word => |*v| v.* = parsed,
     }
 }
+
+pub const Action = union(enum) {
+    none,
+    /// Exits the game entirely
+    quit,
+    /// Returns to the previous menu
+    goback,
+    /// Starts the custom game
+    select,
+    /// Undoes the latest key press (if any)
+    undo_key_press,
+    /// Undoes the latest `word` (if any)
+    ///
+    /// The `word` is defined in the normal vim word definition (until a space not including the current one)
+    undo_word,
+    /// Does a key press with the provided code
+    key_press: u21,
+
+    /// Process the event from vaxis and optionally emit an action to process
+    pub fn processKeydown(key: vaxis.Key) @This() {
+        const ret = std.ascii.control_code.cr;
+        const del = std.ascii.control_code.del;
+        const esc = std.ascii.control_code.esc;
+        const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
+
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches(del, .{})) return .undo_key_press;
+        if (key.matches(esc, .{})) return .goback;
+        if (key.matches(ret, .{})) return .select;
+        if (key.matches('w', ctrl)) return .undo_word;
+        if (key.text != null) return .{ .key_press = key.codepoint };
+
+        return .none;
+    }
+};

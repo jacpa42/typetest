@@ -3,12 +3,18 @@ const vaxis = @import("vaxis");
 const Words = @import("words.zig").Words;
 const FrameTimings = @import("State.zig").FrameTimings;
 
+pub const MenuScene = @import("scene/MenuScene.zig");
+pub const TimeScene = @import("scene/TimeScene.zig");
+pub const WordScene = @import("scene/WordScene.zig");
+pub const TestResultsScene = @import("scene/TestResultsScene.zig");
+pub const CustomGameSelectionScene = @import("scene/CustomGameSelectionScene.zig");
+
 pub const Scene = union(enum) {
-    menu_scene: @import("scene/MenuScene.zig"),
-    time_scene: @import("scene/TimeScene.zig"),
-    word_scene: @import("scene/WordScene.zig"),
-    test_results_scene: @import("scene/TestResultsScene.zig"),
-    custom_game_selection_scene: @import("scene/CustomGameSelectionScene.zig"),
+    menu_scene: MenuScene,
+    time_scene: TimeScene,
+    word_scene: WordScene,
+    test_results_scene: TestResultsScene,
+    custom_game_selection_scene: CustomGameSelectionScene,
 
     pub fn render(
         self: *Scene,

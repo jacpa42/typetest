@@ -326,22 +326,22 @@ fn nextCodePointSlice(
     }
 }
 
-inline fn getCurrentLine(self: *CharacterBuffer) *Line {
+fn getCurrentLine(self: *CharacterBuffer) *Line {
     std.debug.assert(self.current_line < self.lines.len);
     return &self.lines[self.current_line];
 }
 
-inline fn getCurrentLineConst(self: *const CharacterBuffer) *const Line {
+fn getCurrentLineConst(self: *const CharacterBuffer) *const Line {
     std.debug.assert(self.current_line < self.lines.len);
     return &self.lines[self.current_line];
 }
 
-inline fn getCurrentCharacterBuf(self: *CharacterBuffer) *std.ArrayList(RenderChar) {
+fn getCurrentCharacterBuf(self: *CharacterBuffer) *std.ArrayList(RenderChar) {
     std.debug.assert(self.current_line < self.render_chars.len);
     return &self.render_chars[self.current_line];
 }
 
-inline fn getCurrentCharacterBufConst(
+fn getCurrentCharacterBufConst(
     self: *const CharacterBuffer,
 ) *const std.ArrayList(RenderChar) {
     std.debug.assert(self.current_line < self.render_chars.len);

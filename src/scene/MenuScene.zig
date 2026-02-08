@@ -203,3 +203,37 @@ pub const WordGameMenu = enum {
         };
     }
 };
+
+pub const Action = enum {
+    none,
+    /// Exit the program
+    quit,
+    /// Return to previous menu or exit
+    goback,
+    /// Select the current menu option
+    select,
+    /// Move the selection up
+    move_up,
+    /// Move the selection down
+    move_down,
+
+    /// Process the event from vaxis and optionally emit an action to process
+    pub fn processKeydown(key: vaxis.Key) @This() {
+        const ret = std.ascii.control_code.cr;
+        const esc = std.ascii.control_code.esc;
+        const up = vaxis.Key.up;
+        const down = vaxis.Key.down;
+        const ctrl = vaxis.Key.Modifiers{ .ctrl = true };
+
+        if (key.matches('c', ctrl)) return .quit;
+        if (key.matches('q', .{})) return .quit;
+        if (key.matches(esc, .{})) return .goback;
+
+        if (key.matches(ret, .{})) return .select;
+
+        if (key.matchesAny(&.{ 'k', up }, .{})) return .move_up;
+        if (key.matchesAny(&.{ 'j', down }, .{})) return .move_down;
+
+        return .none;
+    }
+};

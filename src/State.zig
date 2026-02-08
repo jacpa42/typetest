@@ -4,7 +4,6 @@ const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
 const cli_args = @import("args.zig");
 const scene = @import("scene.zig");
-const action = @import("action.zig");
 
 const now = @import("scene/util.zig").now;
 const parseArgs = cli_args.parseArgs;
@@ -53,7 +52,7 @@ pub fn init(
     };
 }
 
-pub inline fn render(
+pub fn render(
     self: *@This(),
     window: vaxis.Window,
 ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
@@ -120,221 +119,272 @@ pub fn reinit(
     }
 }
 
-pub fn processKeyPress(
+const ProcessKeyResult = error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit };
+
+pub fn processKeyPress(self: *@This(), key: vaxis.Key, codepoint_limit: u16) ProcessKeyResult {
+    return switch (self.current_scene) {
+        .menu_scene => |*m| self.processMenuKey(m, key, codepoint_limit),
+        .custom_game_selection_scene => |*cgs| self.processCustomGameSelectionKey(cgs, key, codepoint_limit),
+        .test_results_scene => |*test_results_scene| self.processTestResultsKey(test_results_scene, key, codepoint_limit),
+        .time_scene => |*t| self.processTimeKey(t, key, codepoint_limit),
+        .word_scene => |*w| self.processWordKey(w, key, codepoint_limit),
+    };
+}
+
+pub fn processMenuKey(
     self: *@This(),
+    menu_scene: *scene.MenuScene,
     key: vaxis.Key,
     codepoint_limit: u16,
-) error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit } {
-    const menuEventHandler = action.MenuSceneAction.processKeydown;
-    const gameEventHandler = action.GameSceneAction.processKeydown;
-    const resultsEventHandler = action.ResultsSceneAction.processKeydown;
-    const customGameEventHandler = action.CustomGameSelectionAction.processKeydown;
-
-    switch (self.current_scene) {
-        .menu_scene => |*supermenu| switch (menuEventHandler(key)) {
-            .none => return .continue_game,
-            .quit => return .graceful_exit,
-            .goback => switch (supermenu.selection) {
-                .main_menu => return .graceful_exit,
-                .time_game_menu => supermenu.selection = .{ .main_menu = .default },
-                .word_game_menu => supermenu.selection = .{ .main_menu = .default },
-            },
-            .move_up => supermenu.moveSelection(.up),
-            .move_down => supermenu.moveSelection(.down),
-            .select => switch (supermenu.selection) {
-                .main_menu => |inner_menu| {
-                    switch (inner_menu) {
-                        .time => supermenu.selection = .{ .time_game_menu = .default },
-                        .word => supermenu.selection = .{ .word_game_menu = .default },
-                    }
-                },
-                .time_game_menu => |inner_menu| {
-                    const test_duration_ns: u64 = switch (inner_menu) {
-                        .time015 => 15 * 1e9,
-                        .time030 => 30 * 1e9,
-                        .time060 => 60 * 1e9,
-                        .time120 => 120 * 1e9,
-                        ._custom => {
-                            _ = self.scene_arena.reset(.retain_capacity);
-                            self.current_scene = .{ .custom_game_selection_scene = .init(
-                                "Game duration: ",
-                                .{ .time = 0 },
-                            ) };
-                            return .continue_game;
-                        },
-                    };
-
-                    _ = self.scene_arena.reset(.retain_capacity);
-                    self.current_scene = .{
-                        .time_scene = try .init(
-                            self.scene_arena.allocator(),
-                            &self.words,
-                            codepoint_limit,
-                            test_duration_ns,
-                        ),
-                    };
-                },
-                .word_game_menu => |inner_menu| {
-                    const total_words: u32 = switch (inner_menu) {
-                        .words010 => 10,
-                        .words025 => 25,
-                        .words050 => 50,
-                        .words100 => 100,
-                        .__custom => {
-                            _ = self.scene_arena.reset(.retain_capacity);
-                            self.current_scene = .{ .custom_game_selection_scene = .init(
-                                "Number of words: ",
-                                .{ .word = 0 },
-                            ) };
-                            return .continue_game;
-                        },
-                    };
-
-                    _ = self.scene_arena.reset(.retain_capacity);
-                    self.current_scene = .{
-                        .word_scene = try .init(
-                            self.scene_arena.allocator(),
-                            &self.words,
-                            codepoint_limit,
-                            total_words,
-                        ),
-                    };
-                },
-            },
+) ProcessKeyResult {
+    switch (scene.MenuScene.Action.processKeydown(key)) {
+        .none => return .continue_game,
+        .quit => return .graceful_exit,
+        .goback => switch (menu_scene.selection) {
+            .main_menu => return .graceful_exit,
+            .time_game_menu => menu_scene.selection = .{ .main_menu = .default },
+            .word_game_menu => menu_scene.selection = .{ .main_menu = .default },
         },
-        .custom_game_selection_scene => |*custom_game| switch (customGameEventHandler(key)) {
-            .none => return .continue_game,
-            .quit => return .graceful_exit,
-            .goback => {
-                _ = self.scene_arena.reset(.retain_capacity);
-                switch (custom_game.custom_game_type) {
-                    .time => self.current_scene = .{
-                        .menu_scene = .{ .selection = .{ .word_game_menu = .default } },
-                    },
-                    .word => self.current_scene = .{
-                        .menu_scene = .{ .selection = .{ .time_game_menu = .default } },
-                    },
+        .move_up => menu_scene.moveSelection(.up),
+        .move_down => menu_scene.moveSelection(.down),
+        .select => switch (menu_scene.selection) {
+            .main_menu => |inner_menu| {
+                switch (inner_menu) {
+                    .time => menu_scene.selection = .{ .time_game_menu = .default },
+                    .word => menu_scene.selection = .{ .word_game_menu = .default },
                 }
             },
-            .select => {
-                _ = self.scene_arena.reset(.retain_capacity);
-                switch (custom_game.custom_game_type) {
-                    .time => |time_seconds| self.current_scene = .{
-                        .time_scene = try .init(
-                            self.scene_arena.allocator(),
-                            &self.words,
-                            codepoint_limit,
-                            @as(u64, @intCast(time_seconds)) *| 1_000_000_000,
-                        ),
+            .time_game_menu => |inner_menu| {
+                const test_duration_ns: u64 = switch (inner_menu) {
+                    .time015 => 15 * 1e9,
+                    .time030 => 30 * 1e9,
+                    .time060 => 60 * 1e9,
+                    .time120 => 120 * 1e9,
+                    ._custom => {
+                        _ = self.scene_arena.reset(.retain_capacity);
+                        self.current_scene = .{ .custom_game_selection_scene = .init(
+                            "Game duration: ",
+                            .{ .time = 0 },
+                        ) };
+                        return .continue_game;
                     },
-                    .word => |num_words| self.current_scene = .{
-                        .word_scene = try .init(
-                            self.scene_arena.allocator(),
-                            &self.words,
-                            codepoint_limit,
-                            num_words,
-                        ),
+                };
+
+                _ = self.scene_arena.reset(.retain_capacity);
+                self.current_scene = .{
+                    .time_scene = try .init(
+                        self.scene_arena.allocator(),
+                        &self.words,
+                        codepoint_limit,
+                        test_duration_ns,
+                    ),
+                };
+            },
+            .word_game_menu => |inner_menu| {
+                const total_words: u32 = switch (inner_menu) {
+                    .words010 => 10,
+                    .words025 => 25,
+                    .words050 => 50,
+                    .words100 => 100,
+                    .__custom => {
+                        _ = self.scene_arena.reset(.retain_capacity);
+                        self.current_scene = .{ .custom_game_selection_scene = .init(
+                            "Number of words: ",
+                            .{ .word = 0 },
+                        ) };
+                        return .continue_game;
                     },
-                }
-            },
-            .undo_key_press => custom_game.processUndo(),
-            .undo_word => custom_game.processUndoWord(),
-            .key_press => |cp| custom_game.processKeyPress(cp),
-        },
-        .test_results_scene => switch (resultsEventHandler(key)) {
-            .none => return .continue_game,
-            .quit => return .graceful_exit,
-            .return_to_menu => {
-                _ = self.scene_arena.reset(.retain_capacity);
-                self.current_scene = .{ .menu_scene = .{} };
-            },
-        },
-        .time_scene => |*time_scene| switch (gameEventHandler(key)) {
-            .none => return .continue_game,
-            .quit => return .graceful_exit,
-            .return_to_menu => {
-                _ = self.scene_arena.reset(.retain_capacity);
-                self.current_scene = .{ .menu_scene = .{} };
-            },
-            .new_random_game => {
-                self.seed = @bitCast(std.time.microTimestamp());
-                self.words.reseed(self.seed);
+                };
 
                 _ = self.scene_arena.reset(.retain_capacity);
-                time_scene.* = try .init(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    time_scene.test_duration_ns,
-                );
-            },
-            .restart_current_game => {
-                self.words.reseed(self.seed);
-                _ = self.scene_arena.reset(.retain_capacity);
-
-                time_scene.* = try .init(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    time_scene.test_duration_ns,
-                );
-            },
-            .undo_key_press => time_scene.processUndo(),
-            .undo_word => time_scene.processUndoWord(),
-            .key_press => |codepoint| {
-                try time_scene.processKeyPress(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    codepoint,
-                );
-            },
-        },
-        .word_scene => |*word_scene| switch (gameEventHandler(key)) {
-            .none => return .continue_game,
-            .quit => return .graceful_exit,
-            .return_to_menu => {
-                _ = self.scene_arena.reset(.retain_capacity);
-                self.current_scene = .{ .menu_scene = .{} };
-            },
-            .new_random_game => {
-                self.seed = @bitCast(std.time.microTimestamp());
-                self.words.reseed(self.seed);
-
-                _ = self.scene_arena.reset(.retain_capacity);
-                word_scene.* = try .init(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    word_scene.initial_words,
-                );
-            },
-            .restart_current_game => {
-                self.words.reseed(self.seed);
-                _ = self.scene_arena.reset(.retain_capacity);
-
-                word_scene.* = try .init(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    word_scene.initial_words,
-                );
-            },
-            .undo_key_press => word_scene.processUndo(),
-            .undo_word => word_scene.processUndoWord(),
-            .key_press => |codepoint| {
-                try word_scene.processKeyPress(
-                    self.scene_arena.allocator(),
-                    &self.words,
-                    codepoint_limit,
-                    codepoint,
-                );
+                self.current_scene = .{
+                    .word_scene = try .init(
+                        self.scene_arena.allocator(),
+                        &self.words,
+                        codepoint_limit,
+                        total_words,
+                    ),
+                };
             },
         },
     }
 
     return .continue_game;
 }
+
+pub fn processCustomGameSelectionKey(
+    self: *@This(),
+    custom_game_selection_scene: *scene.CustomGameSelectionScene,
+    key: vaxis.Key,
+    codepoint_limit: u16,
+) ProcessKeyResult {
+    switch (scene.CustomGameSelectionScene.Action.processKeydown(key)) {
+        .none => return .continue_game,
+        .quit => return .graceful_exit,
+        .goback => {
+            _ = self.scene_arena.reset(.retain_capacity);
+            switch (custom_game_selection_scene.custom_game_type) {
+                .time => self.current_scene = .{
+                    .menu_scene = .{ .selection = .{ .word_game_menu = .default } },
+                },
+                .word => self.current_scene = .{
+                    .menu_scene = .{ .selection = .{ .time_game_menu = .default } },
+                },
+            }
+        },
+        .select => {
+            _ = self.scene_arena.reset(.retain_capacity);
+            switch (custom_game_selection_scene.custom_game_type) {
+                .time => |time_seconds| self.current_scene = .{
+                    .time_scene = try .init(
+                        self.scene_arena.allocator(),
+                        &self.words,
+                        codepoint_limit,
+                        @as(u64, time_seconds) *| std.time.ns_per_s,
+                    ),
+                },
+                .word => |num_words| self.current_scene = .{
+                    .word_scene = try .init(
+                        self.scene_arena.allocator(),
+                        &self.words,
+                        codepoint_limit,
+                        num_words,
+                    ),
+                },
+            }
+        },
+        .undo_key_press => custom_game_selection_scene.processUndo(),
+        .undo_word => custom_game_selection_scene.processUndoWord(),
+        .key_press => |cp| custom_game_selection_scene.processKeyPress(cp),
+    }
+
+    return .continue_game;
+}
+
+pub fn processTestResultsKey(
+    self: *@This(),
+    test_results_scene: *scene.TestResultsScene,
+    key: vaxis.Key,
+    codepoint_limit: u16,
+) ProcessKeyResult {
+    // TODO: Add a way to restart the last test done
+    _ = test_results_scene;
+    _ = codepoint_limit;
+    switch (scene.TestResultsScene.Action.processKeydown(key)) {
+        .none => return .continue_game,
+        .quit => return .graceful_exit,
+        .return_to_menu => {
+            _ = self.scene_arena.reset(.retain_capacity);
+            self.current_scene = .{ .menu_scene = .{} };
+        },
+    }
+
+    return .continue_game;
+}
+
+pub fn processTimeKey(
+    self: *@This(),
+    time_scene: *scene.TimeScene,
+    key: vaxis.Key,
+    codepoint_limit: u16,
+) ProcessKeyResult {
+    switch (scene.TimeScene.Action.processKeydown(key)) {
+        .none => return .continue_game,
+        .quit => return .graceful_exit,
+        .return_to_menu => {
+            _ = self.scene_arena.reset(.retain_capacity);
+            self.current_scene = .{ .menu_scene = .{} };
+        },
+        .new_random_game => {
+            self.seed = @bitCast(std.time.microTimestamp());
+            self.words.reseed(self.seed);
+
+            _ = self.scene_arena.reset(.retain_capacity);
+            time_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                time_scene.test_duration_ns,
+            );
+        },
+        .restart_current_game => {
+            self.words.reseed(self.seed);
+            _ = self.scene_arena.reset(.retain_capacity);
+
+            time_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                time_scene.test_duration_ns,
+            );
+        },
+        .undo_key_press => time_scene.processUndo(),
+        .undo_word => time_scene.processUndoWord(),
+        .key_press => |codepoint| {
+            try time_scene.processKeyPress(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                codepoint,
+            );
+        },
+    }
+
+    return .continue_game;
+}
+
+pub fn processWordKey(
+    self: *@This(),
+    word_scene: *scene.WordScene,
+    key: vaxis.Key,
+    codepoint_limit: u16,
+) ProcessKeyResult {
+    switch (scene.WordScene.Action.processKeydown(key)) {
+        .none => return .continue_game,
+        .quit => return .graceful_exit,
+        .return_to_menu => {
+            _ = self.scene_arena.reset(.retain_capacity);
+            self.current_scene = .{ .menu_scene = .{} };
+        },
+        .new_random_game => {
+            self.seed = @bitCast(std.time.microTimestamp());
+            self.words.reseed(self.seed);
+
+            _ = self.scene_arena.reset(.retain_capacity);
+            word_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                word_scene.initial_words,
+            );
+        },
+        .restart_current_game => {
+            self.words.reseed(self.seed);
+            _ = self.scene_arena.reset(.retain_capacity);
+
+            word_scene.* = try .init(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                word_scene.initial_words,
+            );
+        },
+        .undo_key_press => word_scene.processUndo(),
+        .undo_word => word_scene.processUndoWord(),
+        .key_press => |codepoint| {
+            try word_scene.processKeyPress(
+                self.scene_arena.allocator(),
+                &self.words,
+                codepoint_limit,
+                codepoint,
+            );
+        },
+    }
+
+    return .continue_game;
+}
+
+const ActionResult = error{ OutOfMemory, EmptyLineNotAllowed }!enum { continue_game, graceful_exit };
 
 pub fn deinit(self: *@This()) void {
     self.words.deinit(self.scene_arena.child_allocator);

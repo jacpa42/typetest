@@ -4,7 +4,6 @@ const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
 const cli_args = @import("args.zig");
 const scene = @import("scene.zig");
-const action = @import("action.zig");
 
 const now = @import("scene/util.zig").now;
 const State = @import("State.zig");
