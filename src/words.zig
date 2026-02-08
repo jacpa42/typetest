@@ -110,12 +110,15 @@ pub const Words = struct {
         };
         var num_codepoints: u16 = 0;
         var next_word_start: usize = 0;
+        const mask = @as(u8, @intFromBool(make_lower_case)) << 5;
 
         while (utf8iter.nextCodepointSlice()) |slice| {
             if (slice.len > 1) {
                 num_codepoints += 1;
                 continue;
             }
+
+            std.debug.assert(slice.len == 1);
 
             const vt = std.ascii.control_code.vt;
             const ff = std.ascii.control_code.ff;
@@ -133,11 +136,12 @@ pub const Words = struct {
                     next_word_start = utf8iter.i;
                     num_codepoints = 0;
                 },
-                'A'...'Z' => if (make_lower_case) {
+                'A'...'Z' => {
                     // This is a bit sus :)
-                    @constCast(&slice[0]).* = slice[0] | 32;
+                    @constCast(&slice[0]).* = slice[0] | mask;
+                    num_codepoints += 1;
                 },
-                else => {},
+                else => num_codepoints += 1,
             }
         }
 

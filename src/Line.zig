@@ -18,7 +18,7 @@ iter: std.unicode.Utf8Iterator,
 /// the line contains some chars
 ///
 /// param `word_array_list`: A non-empty array list of words.
-/// param `total_codepoints`: the sum of the codepoints in the words array list (not including spaces)
+/// param `total_codepoints_with_spaces`: the sum of the codepoints in the words array list (including spaces)
 pub fn init(
     word_array_list: std.ArrayList(u8),
     total_codepoints_with_spaces: u16,
