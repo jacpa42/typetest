@@ -7,14 +7,14 @@ pub const MenuScene = @import("scene/MenuScene.zig");
 pub const TimeScene = @import("scene/TimeScene.zig");
 pub const WordScene = @import("scene/WordScene.zig");
 pub const TestResultsScene = @import("scene/TestResultsScene.zig");
-pub const CustomGameSelectionScene = @import("scene/CustomGameSelectionScene.zig");
+pub const CustomGameScene = @import("scene/CustomGameScene.zig");
 
 pub const Scene = union(enum) {
     menu_scene: MenuScene,
     time_scene: TimeScene,
     word_scene: WordScene,
     test_results_scene: TestResultsScene,
-    custom_game_selection_scene: CustomGameSelectionScene,
+    custom_game_scene: CustomGameScene,
 
     pub fn render(
         self: *Scene,

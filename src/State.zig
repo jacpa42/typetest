@@ -115,7 +115,7 @@ pub fn reinit(
         },
         .menu_scene => {},
         .test_results_scene => {},
-        .custom_game_selection_scene => {},
+        .custom_game_scene => {},
     }
 }
 
@@ -123,11 +123,11 @@ const ProcessKeyResult = error{ OutOfMemory, EmptyLineNotAllowed }!enum { contin
 
 pub fn processKeyPress(self: *@This(), key: vaxis.Key, codepoint_limit: u16) ProcessKeyResult {
     return switch (self.current_scene) {
-        .menu_scene => |*m| self.processMenuKey(m, key, codepoint_limit),
-        .custom_game_selection_scene => |*cgs| self.processCustomGameSelectionKey(cgs, key, codepoint_limit),
-        .test_results_scene => |*test_results_scene| self.processTestResultsKey(test_results_scene, key, codepoint_limit),
-        .time_scene => |*t| self.processTimeKey(t, key, codepoint_limit),
-        .word_scene => |*w| self.processWordKey(w, key, codepoint_limit),
+        .menu_scene => |*sc| self.processMenuKey(sc, key, codepoint_limit),
+        .custom_game_scene => |*sc| self.processCustomGameKey(sc, key, codepoint_limit),
+        .test_results_scene => |*sc| self.processTestResultsKey(sc, key, codepoint_limit),
+        .time_scene => |*sc| self.processTimeKey(sc, key, codepoint_limit),
+        .word_scene => |*sc| self.processWordKey(sc, key, codepoint_limit),
     };
 }
 
@@ -162,7 +162,7 @@ pub fn processMenuKey(
                     .time120 => 120 * 1e9,
                     ._custom => {
                         _ = self.scene_arena.reset(.retain_capacity);
-                        self.current_scene = .{ .custom_game_selection_scene = .init(
+                        self.current_scene = .{ .custom_game_scene = .init(
                             "Game duration: ",
                             .{ .time = 0 },
                         ) };
@@ -188,7 +188,7 @@ pub fn processMenuKey(
                     .words100 => 100,
                     .__custom => {
                         _ = self.scene_arena.reset(.retain_capacity);
-                        self.current_scene = .{ .custom_game_selection_scene = .init(
+                        self.current_scene = .{ .custom_game_scene = .init(
                             "Number of words: ",
                             .{ .word = 0 },
                         ) };
@@ -212,13 +212,13 @@ pub fn processMenuKey(
     return .continue_game;
 }
 
-pub fn processCustomGameSelectionKey(
+pub fn processCustomGameKey(
     self: *@This(),
-    custom_game_selection_scene: *scene.CustomGameSelectionScene,
+    custom_game_selection_scene: *scene.CustomGameScene,
     key: vaxis.Key,
     codepoint_limit: u16,
 ) ProcessKeyResult {
-    switch (scene.CustomGameSelectionScene.Action.processKeydown(key)) {
+    switch (scene.CustomGameScene.Action.processKeydown(key)) {
         .none => return .continue_game,
         .quit => return .graceful_exit,
         .goback => {

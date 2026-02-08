@@ -71,7 +71,7 @@ pub fn main() !void {
             },
             .menu_scene => {},
             .test_results_scene => {},
-            .custom_game_selection_scene => {},
+            .custom_game_scene => {},
         }
 
         vx.window().clear();
