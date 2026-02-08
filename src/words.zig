@@ -15,6 +15,10 @@ pub const Word = struct {
     buf: []const u8,
     /// The number of utf8 codepoints in the grapheme
     num_codepoints: u16,
+
+    pub fn init(buf: []const u8, num_codepoints: u16) Word {
+        return .{ .buf = buf, .num_codepoints = num_codepoints };
+    }
 };
 
 /// A bunch of `Word` structs in an array with a nifty way to generate random words.
@@ -127,10 +131,7 @@ pub const Words = struct {
                     const buf = word_buf[next_word_start .. utf8iter.i - 1];
                     if (0 < buf.len and num_codepoints < MAX_WORD_SIZE) {
                         largest_word = @max(largest_word, num_codepoints);
-                        try words.append(gpa, .{
-                            .buf = buf,
-                            .num_codepoints = num_codepoints,
-                        });
+                        try words.append(gpa, .init(buf, num_codepoints));
                     }
 
                     next_word_start = utf8iter.i;
