@@ -18,16 +18,19 @@ const Event = union(enum) {
 };
 
 pub fn main() !void {
-    const gpa = std.heap.page_allocator;
-    var game_state = try State.init(gpa, try cli_args.parseArgs(gpa));
+    var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
+    defer if (gpa.deinit() == .leak) std.debug.print("Leak detected!!\n", .{});
+
+    const alloc = gpa.allocator();
+    var game_state = try State.init(alloc, try cli_args.parseArgs(alloc));
     defer game_state.deinit();
 
     var tty_buffer: [1024]u8 = undefined;
     var tty = try vaxis.Tty.init(&tty_buffer);
     defer tty.deinit();
 
-    var vx = try vaxis.init(gpa, .{});
-    defer vx.deinit(gpa, tty.writer());
+    var vx = try vaxis.init(alloc, .{});
+    defer vx.deinit(alloc, tty.writer());
 
     var loop: vaxis.Loop(Event) = .{ .tty = &tty, .vaxis = &vx };
     try loop.init();
@@ -43,7 +46,7 @@ pub fn main() !void {
 
         while (loop.tryEvent()) |event| switch (event) {
             .winsize => |ws| {
-                try vx.resize(gpa, tty.writer(), ws);
+                try vx.resize(alloc, tty.writer(), ws);
                 try game_state.reinit(((vx.screen.width * 5) / 8) -| 2);
             },
 

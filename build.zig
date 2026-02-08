@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) !void {
 
     const typetest = b.addModule("typetest", .{
         .root_source_file = b.path("src/main.zig"),
-        .strip = optimize != .Debug,
+        .strip = optimize == .ReleaseSmall,
         .target = target,
         .optimize = optimize,
     });
