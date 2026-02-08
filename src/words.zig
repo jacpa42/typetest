@@ -95,42 +95,56 @@ pub const Words = struct {
     ///
     /// Stores the word_buf for deinit
     pub fn init(
-        alloc: std.mem.Allocator,
+        gpa: std.mem.Allocator,
         rng: WordRng,
         make_lower_case: bool,
         word_buf: []const u8,
     ) error{ OutOfMemory, InvalidUtf8, EmptyFile }!@This() {
         var largest_word: u16 = 0;
-        var words = try std.ArrayList(Word).initCapacity(alloc, 0);
-        errdefer words.deinit(alloc);
+        var words = std.ArrayList(Word).empty;
+        errdefer words.deinit(gpa);
 
-        var word_iterator = std.mem.splitAny(u8, word_buf, &std.ascii.whitespace);
-        word_iter: while (word_iterator.next()) |word_bytes| {
-            const view = try std.unicode.Utf8View.init(word_bytes);
+        var utf8iter = blk: {
+            const view = try std.unicode.Utf8View.init(word_buf);
+            break :blk view.iterator();
+        };
+        var num_codepoints: u16 = 0;
+        var next_word_start: usize = 0;
 
-            var utf8_iter = view.iterator();
-            var num_codepoints: u16 = 0;
-            while (utf8_iter.nextCodepointSlice()) |slice| : (num_codepoints += 1) {
-                if (num_codepoints > MAX_WORD_SIZE) continue :word_iter;
-
-                if (make_lower_case and slice.len == 1) {
-                    // This is a bit sus :)
-                    @constCast(&slice[0]).* = std.ascii.toLower(slice[0]);
-                }
+        while (utf8iter.nextCodepointSlice()) |slice| {
+            if (slice.len > 1) {
+                num_codepoints += 1;
+                continue;
             }
-            if (num_codepoints == 0) continue :word_iter;
 
-            largest_word = @max(largest_word, num_codepoints);
-            try words.append(alloc, .{
-                .buf = word_bytes,
-                .num_codepoints = num_codepoints,
-            });
+            const vt = std.ascii.control_code.vt;
+            const ff = std.ascii.control_code.ff;
+            switch (slice[0]) {
+                ' ', '\t', '\n', '\r', vt, ff => {
+                    const buf = word_buf[next_word_start .. utf8iter.i - 1];
+                    if (0 < buf.len and num_codepoints < MAX_WORD_SIZE) {
+                        largest_word = @max(largest_word, num_codepoints);
+                        try words.append(gpa, .{
+                            .buf = buf,
+                            .num_codepoints = num_codepoints,
+                        });
+                    }
+
+                    next_word_start = utf8iter.i;
+                    num_codepoints = 0;
+                },
+                'A'...'Z' => if (make_lower_case) {
+                    // This is a bit sus :)
+                    @constCast(&slice[0]).* = slice[0] | 32;
+                },
+                else => {},
+            }
         }
 
         if (words.items.len == 0) return error.EmptyFile;
 
         return @This(){
-            .words = try words.toOwnedSlice(alloc),
+            .words = try words.toOwnedSlice(gpa),
             .rng = rng,
             .word_buf = word_buf,
             .max_codepoints = largest_word,
@@ -147,11 +161,16 @@ pub const Words = struct {
             "\n" ** 2552,
         };
 
-        for (input) |empty_lines| {
-            _ = init(alloc, .{ .sequential = 0 }, false, empty_lines) catch |e| {
+        for (0.., input) |input_idx, empty_lines| {
+            const words = init(alloc, .{ .sequential = 0 }, false, empty_lines) catch |e| {
                 try std.testing.expectEqual(error.EmptyFile, e);
                 continue;
             };
+            std.debug.print("\n----\n", .{});
+            std.debug.print("Found {} words at input {}:\n", .{ words.words.len, input_idx });
+            for (words.words) |w| {
+                std.debug.print("---{any}---\n", .{w.buf});
+            }
             @panic("Empty input was mishandled");
         }
     }
@@ -201,7 +220,7 @@ pub const Words = struct {
         const gpa = std.testing.allocator;
         const max_letters = 10_000;
 
-        for (0..5) |seed| {
+        for (0..10) |seed| {
             var default_prng = std.Random.DefaultPrng.init(@intCast(seed));
             var rng = default_prng.random();
 
@@ -233,6 +252,57 @@ pub const Words = struct {
 
             for (happy_words.words) |word| {
                 try std.testing.expect(word.num_codepoints < MAX_WORD_SIZE);
+            }
+        }
+    }
+
+    test "Words parsing: lower casing stuff" {
+        const gpa = std.testing.allocator;
+        const max_letters = 10_000;
+
+        for (0..10) |seed| {
+            var default_prng = std.Random.DefaultPrng.init(@intCast(seed));
+            var rng = default_prng.random();
+
+            var word_list = std.ArrayList(u8).empty;
+            // NOTE: errdefer as this buffer is taken by the Words object
+            errdefer word_list.deinit(gpa);
+            for (0..rng.intRangeLessThan(usize, 1, max_letters)) |_| {
+                if (rng.weightedIndex(u8, &.{ 2, 8 }) == 0) {
+                    const idx = rng.intRangeLessThan(u8, 0, std.ascii.whitespace.len);
+                    try word_list.append(gpa, std.ascii.whitespace[idx]);
+                } else {
+                    const next_char_list = [_]u21{ randomEnglishCharacter(&rng), randomJapaneseCharacter(&rng) };
+                    const char = next_char_list[rng.intRangeLessThan(usize, 0, next_char_list.len)];
+
+                    var buf: [4]u8 = @splat(0);
+                    const len = try std.unicode.utf8Encode(char, &buf);
+
+                    try word_list.appendSlice(gpa, buf[0..len]);
+                }
+            }
+
+            var happy_words = try init(
+                gpa,
+                .{ .sequential = 0 },
+                true,
+                try word_list.toOwnedSlice(gpa),
+            );
+            defer happy_words.deinit(gpa);
+
+            for (happy_words.words) |word| {
+                try std.testing.expect(word.num_codepoints < MAX_WORD_SIZE);
+                const view = try std.unicode.Utf8View.init(word.buf);
+                var iter = view.iterator();
+
+                while (iter.nextCodepointSlice()) |cp| {
+                    if (cp.len == 1) {
+                        switch (cp[0]) {
+                            'A'...'Z' => @panic("Found capital word!!"),
+                            else => continue,
+                        }
+                    }
+                }
             }
         }
     }
