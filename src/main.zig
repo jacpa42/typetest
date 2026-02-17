@@ -2,11 +2,11 @@ const std = @import("std");
 const clap = @import("clap");
 const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
-const cli_args = @import("args.zig");
+const Args = @import("Args.zig");
 const scene = @import("scene.zig");
 
 const now = @import("scene/util.zig").now;
-const State = @import("State.zig");
+const Game = @import("Game.zig");
 
 test {
     std.testing.refAllDecls(@This());
@@ -22,7 +22,7 @@ pub fn main() !void {
     defer if (gpa.deinit() == .leak) std.debug.print("Leak detected!!\n", .{});
 
     const alloc = gpa.allocator();
-    var game_state = try State.init(alloc, try cli_args.parseArgs(alloc));
+    var game_state = try Game.init(alloc, try Args.parse(alloc));
     defer game_state.deinit();
 
     var tty_buffer: [1024]u8 = undefined;

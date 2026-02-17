@@ -14,7 +14,7 @@ test_duration_seconds: f32,
 /// Clears screen and renders the current state.
 pub fn render(
     self: *const @This(),
-    data: super.RenderData,
+    data: super.RenderInfo,
 ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
     const game_window = try layout.gameWindow(
         data.root_window,

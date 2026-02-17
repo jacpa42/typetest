@@ -1,7 +1,7 @@
 const std = @import("std");
 const vaxis = @import("vaxis");
 const Words = @import("words.zig").Words;
-const FrameTimings = @import("State.zig").FrameTimings;
+const FrameTimings = @import("Game.zig").FrameTimings;
 
 pub const MenuScene = @import("scene/MenuScene.zig");
 pub const TimeScene = @import("scene/TimeScene.zig");
@@ -18,7 +18,7 @@ pub const Scene = union(enum) {
 
     pub fn render(
         self: *Scene,
-        data: RenderData,
+        data: RenderInfo,
     ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
         switch (self.*) {
             inline else => |*sc| try sc.render(data),
@@ -27,7 +27,7 @@ pub const Scene = union(enum) {
 };
 
 /// Stuff we need to pass in to the `render` method from global state to render the game
-pub const RenderData = struct {
+pub const RenderInfo = struct {
     alloc: std.mem.Allocator,
     frame_counter: u64,
     /// In frames

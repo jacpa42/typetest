@@ -11,7 +11,7 @@ selection: SuperMenu = .{ .main_menu = .default },
 /// Clears screen and renders the current state
 pub fn render(
     self: *const MenuScene,
-    data: super.RenderData,
+    data: super.RenderInfo,
 ) error{EmptyLineNotAllowed}!void {
     comptime Header.comptimeChecks();
 

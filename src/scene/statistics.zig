@@ -14,7 +14,7 @@ pub const Statistic = struct {
 pub fn renderStatistics(
     game_window: vaxis.Window,
     statistics: []const Statistic,
-    data: super.RenderData,
+    info: super.RenderInfo,
 ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
     const win = layout.runningStatisticsWindow(game_window);
 
@@ -24,13 +24,13 @@ pub fn renderStatistics(
     for (statistics) |stat| {
         defer x_off += child_win_width;
 
-        const buf = try data.frame_print_buffer.addManyAsSliceBounded(
+        const buf = try info.frame_print_buffer.addManyAsSliceBounded(
             util.REQUIRED_NUM_BUF_SIZE,
         );
 
         const print_buf = std.fmt.bufPrint(buf, "{d:.0}", .{stat.value}) catch return error.OutOfMemory;
         // pop off the last couple values we dont use
-        data.frame_print_buffer.items.len -= (buf.len - print_buf.len);
+        info.frame_print_buffer.items.len -= (buf.len - print_buf.len);
 
         const statistic_win = win.child(.{
             .height = win.height,

@@ -2,11 +2,10 @@ const std = @import("std");
 const clap = @import("clap");
 const vaxis = @import("vaxis");
 const vxfw = vaxis.vxfw;
-const cli_args = @import("args.zig");
+const Args = @import("Args.zig");
 const scene = @import("scene.zig");
 
 const now = @import("scene/util.zig").now;
-const parseArgs = cli_args.parseArgs;
 const RingBuffer = @import("ring_buffer.zig").RingBuffer;
 const Words = @import("words.zig").Words;
 
@@ -39,7 +38,7 @@ frame_print_buffer: std.ArrayList(u8),
 
 pub fn init(
     alloc: std.mem.Allocator,
-    args: cli_args.Args,
+    args: Args,
 ) !@This() {
     return @This(){
         .scene_arena = std.heap.ArenaAllocator.init(alloc),

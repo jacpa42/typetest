@@ -4,6 +4,15 @@ const wd = @import("words.zig");
 const vaxis = @import("vaxis");
 const Words = wd.Words;
 
+const Args = @This();
+
+word_buffer: []const u8,
+words: Words,
+seed: u64,
+fps: u64,
+animation_duration: u64,
+cursor_shape: vaxis.Cell.CursorShape,
+
 const KIB = 1024;
 const MAX_FILE_SIZE = 512 * KIB;
 
@@ -37,17 +46,7 @@ const value_parsers = .{
 
 const opts = clap.ParseOptions{ .allocator = undefined };
 
-/// All the relevant stuff we need after argument parsing
-pub const Args = struct {
-    word_buffer: []const u8,
-    words: Words,
-    seed: u64,
-    fps: u64,
-    animation_duration: u64,
-    cursor_shape: vaxis.Cell.CursorShape,
-};
-
-pub fn parseArgs(alloc: std.mem.Allocator) !Args {
+pub fn parse(alloc: std.mem.Allocator) !Args {
     const res = clap.parse(clap.Help, &params, value_parsers, opts) catch |err| {
         const info = switch (err) {
             error.NameNotPartOfEnum => "The enumeration values are listed in the help menu below\n\n",

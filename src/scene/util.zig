@@ -1,7 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const State = @import("../State.zig");
-const FrameTimings = State.FrameTimings;
+const Game = @import("../Game.zig");
 
 /// Allocating a buffer of at least this size should not error when we try to print a float or int to it.
 pub const REQUIRED_NUM_BUF_SIZE: usize = 64;
@@ -43,14 +42,14 @@ pub fn charactersPerSecond(
 }
 
 /// The number of characters per second the user is typeing
-pub fn framesPerSecond(frame_timings: *const FrameTimings) f32 {
+pub fn framesPerSecond(frame_timings: *const Game.FrameTimings) f32 {
     var average: f32 = 0.0;
-    const count: f32 = comptime State.NUM_FRAME_TIMINGS;
+    const count: f32 = Game.NUM_FRAME_TIMINGS;
 
-    if (State.NUM_FRAME_TIMINGS == 0) @compileError("retard");
+    if (Game.NUM_FRAME_TIMINGS == 0) @compileError("retard");
 
-    inline for (frame_timings.items) |frame_time| {
-        average += 1e9 / @as(f32, @floatFromInt(frame_time));
+    for (frame_timings.items) |frame_time| {
+        average += std.time.ns_per_s / @as(f32, @floatFromInt(frame_time));
     }
 
     return average / count;

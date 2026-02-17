@@ -47,7 +47,7 @@ pub fn init(
 /// Clears screen and renders the current state.
 pub fn render(
     self: *TimeScene,
-    data: super.RenderData,
+    data: super.RenderInfo,
 ) error{ EmptyLineNotAllowed, OutOfMemory }!void {
     const game_window = try layout.gameWindow(
         data.root_window,
